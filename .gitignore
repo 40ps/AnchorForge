@@ -1,0 +1,22 @@
+local_config/
+local_config/.env
+local_config/.env.py
+local_config/Keystore
+vai/test_suite.py
+vai/logs
+vai/*.log
+vai/*.json
+vai/*.json*
+vai/__pycache__/
+vai/*.pyc
+vai/*.pyo
+vai/venv/
+vai/dist/
+vai/build/
+vai/*.egg-info/
+vai/.idea/  # für PyCharm
+vai/.vscode/  # für VS Code
+vai/.DS_Store  # macOS-Dateien
+vai/Thumbs.db  # Windows-Dateien
+vai/.env
+vai/.flaskenv
