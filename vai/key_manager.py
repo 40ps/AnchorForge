@@ -1,7 +1,7 @@
 # key_manager.py
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict
 
 from bsv import PrivateKey, Network
@@ -57,7 +57,7 @@ def generate_key_pair(
     new_public_address = new_private_key.address(network=network)
     
     # Get the current UTC date in YYYY-MM-DD format
-    generation_date = datetime.utcnow().strftime('%Y-%m-%d')
+    generation_date =datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
     # Create the key pair data dictionary
     key_pair_data = {
@@ -72,7 +72,7 @@ def generate_key_pair(
     # Load existing keys, add the new one, and save
     store_file_path = file_path if file_path else Config.KEYPAIR_STORE_FILE
     assert store_file_path is not None
-    
+
     key_store = load_key_store(store_file_path)
     key_store["key_pairs"].append(key_pair_data)
     save_key_store(key_store, store_file_path)
@@ -91,10 +91,22 @@ if __name__ == "__main__":
         label='bank_key_testnet',
         comment='Generated for funding testnet transactions.'
     )
+    generate_key_pair(
+        network_type='test',
+        label='utxo_store',
+        comment='For the store of UTXOs to be used for mass transactions'
+    )
 
-    # Example for Mainnet
+
+
     generate_key_pair(
         network_type='main',
-        label='production_signing_key',
-        comment='Mainnet key for signing production audit records.'
+        label='bank_account',
+        comment='Bankaccount to maintain funds for spending in audits'
+    )
+
+    generate_key_pair(
+        network_type='main',
+        label='utxo_account',
+        comment='Bankaccount to maintain funds for spending in audits'
     )
