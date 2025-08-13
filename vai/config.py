@@ -21,7 +21,10 @@ class Config:
     AUDIT_LOG_FILE = "audit_log.json"
     BLOCK_HEADERS_FILE = "block_headers.json"
     LOG_FILE = "application.log"
-
+    
+    KEYPAIR_STORE_FILE: Optional[str] = os.getenv("KEYPAIR_STORE_FILE")
+    assert KEYPAIR_STORE_FILE is not None, "KEYPAIR_STORE_FILE must be set in environment variable"
+    
     WOC_TESTNET_API_BASE_URL: Optional[str] = os.getenv("WOC_TESTNET_API_BASE_URL")
     assert WOC_TESTNET_API_BASE_URL is not None, "WOC_TESTNET_API_BASE_URL must be set in environment variable"
 
