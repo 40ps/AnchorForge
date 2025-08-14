@@ -76,14 +76,17 @@ def save_tx_store(store):
         json.dump(store, f, indent=4)
 
 
-async def initialize_utxo_store(private_key_wif, network="main"):
+async def initialize_utxo_store(private_key_wif):
     """Initialize the UTXO store with UTXOs from the blockchain."""
+    ''' 
+    TODO remove or improve
     if network not in Config.NETWORK_API_ENDPOINTS:
         raise ValueError("Invalid network. Use 'main' or 'test'.")
     
     # api_endpoint = Config.NETWORK_API_ENDPOINTS[network]
-
-    priv_key = PrivateKey(private_key_wif, network=Network.TESTNET)
+    '''
+    
+    priv_key = PrivateKey(private_key_wif, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = priv_key.address() 
 
     # Fetch all UTXOs belonging to the sender's address
@@ -108,7 +111,7 @@ async def initialize_utxo_store(private_key_wif, network="main"):
 
     store = {  # note, using my own utxo-json already
         "address": priv_key.address(),
-        "network": network,  # Store network for reference
+        "network": Config.ACTIVE_NETWORK_NAME,  # Store network for reference  #TODO Abstract?
         "utxos": formatted_utxos_for_store
         }
 
@@ -123,7 +126,7 @@ async def initialize_utxo_store(private_key_wif, network="main"):
     if not tx_store.get("address") or tx_store["address"] != sender_address:
         print(f"TX store being initialized/reset for address {sender_address}.")
         tx_store = {"address": priv_key.address(), 
-                    "network": network, 
+                    "network": Config.ACTIVE_NETWORK_NAME, 
                     "transactions": []}
         
 
@@ -155,7 +158,11 @@ async def initialize_utxo_store(private_key_wif, network="main"):
     # If the loaded used_store is for a different address or empty, re-initialize its structure.
     if not used_store.get("address") or used_store["address"] != sender_address:
         print(f"USED UTXO store being initialized/reset for address {sender_address}.")
-        used_store = {"address": priv_key.address(), "network": network, "used_utxos": []}
+        used_store = {
+            "address": priv_key.address(), 
+            "network": Config.ACTIVE_NETWORK_NAME,
+            "used_utxos": []
+            }
         save_used_utxo_store(used_store) # Save immediately if just initialized/reset
 
     return store # Return the (updated) utxo_store data in memory

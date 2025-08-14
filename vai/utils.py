@@ -239,7 +239,7 @@ async def get_merkle_proof(transaction_id: str) -> dict | None:
     #url = f"{Config.WOC_TESTNET_API_BASE_URL}/tx/{transaction_id}/merkle-proof"
    
     print(f"\n--- Fetching Merkle Proof for TXID: {transaction_id} ---")
-    url = f"{Config.WOC_TESTNET_API_BASE_URL}/tx/{transaction_id}/proof/tsc"
+    url = f"{Config.WOC_API_BASE_URL}/tx/{transaction_id}/proof/tsc"
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url, timeout=110.0)

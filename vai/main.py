@@ -1,6 +1,9 @@
 '''
 Version: 25-08-10
-    moved load/save blockheader into an own class
+    moved load/save blockheader into an own class BlockHeaderManager
+    created blockchain_service
+    moved helpers into utils
+    cleaned up a lot of type issues
 Version: 25-08-09
     moved secrets to .env, made config to class query environment
     addapted type info
@@ -137,11 +140,11 @@ async def main():
 
 async def mainmain():
     header_manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
-    
+
     priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Network.TESTNET)
     sender_address = priv_key.address()
 
-    await wallet_manager.initialize_utxo_store(Config.UTXO_STORE_KEY_WIF, "test")
+    await wallet_manager.initialize_utxo_store(Config.UTXO_STORE_KEY_WIF)
 
     latest_height_info = await blockchain_api.get_chain_info_woc()
     if latest_height_info:

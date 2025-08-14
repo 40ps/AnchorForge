@@ -2,6 +2,7 @@
 import os
 from typing import Optional
 from dotenv import load_dotenv, find_dotenv
+from bsv import Network
 
 # Load environment variables from .env file
 #load_dotenv(find_dotenv())
@@ -13,6 +14,49 @@ class Config:
     It reads settings from environment variables, providing a single source of truth.
     """
 
+    ACTIVE_NETWORK_NAME = os.getenv("NETWORK", "test").lower()
+
+    if ACTIVE_NETWORK_NAME == "test":
+        NETWORK_PREFIX = "TESTNET_"
+        ACTIVE_NETWORK_BSV = Network.TESTNET
+    elif ACTIVE_NETWORK_NAME == "main":
+        NETWORK_PREFIX = "MAINNET_"
+        ACTIVE_NETWORK_BSV = Network.MAINNET
+    else:
+        raise ValueError(f"Invalid NETWORK '{ACTIVE_NETWORK_NAME}' specified in .env file. Use 'test' or 'main'.")
+
+
+
+    WOC_API_BASE_URL: Optional[str] = os.getenv(f"{NETWORK_PREFIX}WOC_TESTNET_API_BASE_URL")
+    assert WOC_API_BASE_URL is not None, "WOC_API_BASE_URL must be set in environment variable"
+
+    '''
+    # --- Network-specific API Endpoints ---
+    NETWORK_API_ENDPOINTS = {
+        "main": "https://api.whatsonchain.com/v1/bsv/main",
+        "test": WOC_API_BASE_URL
+    }
+    '''
+
+    # --- Secrets (loaded from .env) ---
+    # It's good practice to handle mandatory keys explicitly.
+    PRIVATE_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}PRIVATE_KEY_WIF")
+
+    UTXO_STORE_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}UTXO_STORE_KEY_WIF")
+    PRIVATE_SIGNING_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}PRIVATE_SIGNING_KEY_WIF")
+    PRIVATE_BANK_KEY_WIF: Optional[str] = os.getenv(f"{NETWORK_PREFIX}PRIVATE_BANK_KEY_WIF")
+
+    # The bank address is not a secret, but it's good to keep it with the bank key.
+    BANK_ADDRESS: Optional[str]  = os.getenv("{NETWORK_PREFIX}BANK_ADDRESS")
+    
+    assert PRIVATE_KEY_WIF is not None, "PRIVATE_KEY_WIF must be set in environment variable"
+    assert UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF must be set in environment variable"
+    assert PRIVATE_BANK_KEY_WIF is not None, "PRIVATE_BANK_KEY_WIF must be set in environment variable"
+    assert PRIVATE_SIGNING_KEY_WIF is not None, "PRIVATE_SIGNING_KEY_WIF must be set in environment variable"
+
+    # The bank address is not a secret, but it's good to keep it with the bank key.
+    assert BANK_ADDRESS is not None, "BANK_ADDRESS must be set in environment variable"
+    
     # --- File Paths ---
     # These are not secrets and can remain in the code, but you could also move them to .env.
     UTXO_STORE_FILE = "utxo_store.json"
@@ -25,34 +69,9 @@ class Config:
     KEYPAIR_STORE_FILE: Optional[str] = os.getenv("KEYPAIR_STORE_FILE")
     assert KEYPAIR_STORE_FILE is not None, "KEYPAIR_STORE_FILE must be set in environment variable"
     
-    WOC_TESTNET_API_BASE_URL: Optional[str] = os.getenv("WOC_TESTNET_API_BASE_URL")
-    assert WOC_TESTNET_API_BASE_URL is not None, "WOC_TESTNET_API_BASE_URL must be set in environment variable"
 
-    # --- Network-specific API Endpoints ---
-    NETWORK_API_ENDPOINTS = {
-        "main": "https://api.whatsonchain.com/v1/bsv/main",
-        "test": WOC_TESTNET_API_BASE_URL
-    }
 
-    # --- Secrets (loaded from .env) ---
-    # The getenv() method returns None if the key does not exist.
-    # It's good practice to handle mandatory keys explicitly.
-    PRIVATE_KEY_WIF: Optional[str]  = os.getenv("PRIVATE_KEY_WIF")
-    UTXO_STORE_KEY_WIF: Optional[str]  = os.getenv("UTXO_STORE_KEY_WIF")
-    PRIVATE_BANK_KEY_WIF: Optional[str] = os.getenv("PRIVATE_BANK_KEY_WIF")
-    PRIVATE_SIGNING_KEY_WIF: Optional[str]  = os.getenv("PRIVATE_SIGNING_KEY_WIF")
 
-    # The bank address is not a secret, but it's good to keep it with the bank key.
-    BANK_ADDRESS: Optional[str]  = os.getenv("BANK_ADDRESS")
-    
-    assert PRIVATE_KEY_WIF is not None, "PRIVATE_KEY_WIF must be set in environment variable"
-    assert UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF must be set in environment variable"
-    assert PRIVATE_BANK_KEY_WIF is not None, "PRIVATE_BANK_KEY_WIF must be set in environment variable"
-    assert PRIVATE_SIGNING_KEY_WIF is not None, "PRIVATE_SIGNING_KEY_WIF must be set in environment variable"
-
-    # The bank address is not a secret, but it's good to keep it with the bank key.
-    assert BANK_ADDRESS is not None, "BANK_ADDRESS must be set in environment variable"
-    
 
     # --- Control Behavior (loaded from .env and cast to correct types) ---
     FEE_STRATEGY = int(os.getenv("FEE_STRATEGY", 300))
