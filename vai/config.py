@@ -27,7 +27,7 @@ class Config:
 
 
 
-    WOC_API_BASE_URL: Optional[str] = os.getenv(f"{NETWORK_PREFIX}WOC_TESTNET_API_BASE_URL")
+    WOC_API_BASE_URL: Optional[str] = os.getenv(f"{NETWORK_PREFIX}WOC_API_BASE_URL")
     assert WOC_API_BASE_URL is not None, "WOC_API_BASE_URL must be set in environment variable"
 
     '''
@@ -47,7 +47,7 @@ class Config:
     PRIVATE_BANK_KEY_WIF: Optional[str] = os.getenv(f"{NETWORK_PREFIX}PRIVATE_BANK_KEY_WIF")
 
     # The bank address is not a secret, but it's good to keep it with the bank key.
-    BANK_ADDRESS: Optional[str]  = os.getenv("{NETWORK_PREFIX}BANK_ADDRESS")
+    BANK_ADDRESS: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}BANK_ADDRESS")
     
     assert PRIVATE_KEY_WIF is not None, "PRIVATE_KEY_WIF must be set in environment variable"
     assert UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF must be set in environment variable"
