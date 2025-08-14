@@ -45,7 +45,7 @@ async def load_bank(private_key_wif: str) -> str | None:
     """
     print(f"\n--- Überweisung von UTXOs an die Bank von einer anderen Adresse ---")
 
-    priv_key_sender = PrivateKey(private_key_wif, network=Network.TESTNET)
+    priv_key_sender = PrivateKey(private_key_wif, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = priv_key_sender.address()
     
     print(f"  Quelladresse: {sender_address}")
@@ -126,7 +126,7 @@ async def consolidate_utxos(private_key_wif: str) -> str | None:
     """
     print("\n--- Consolidating UTXOs ---")
 
-    priv_key = PrivateKey(private_key_wif, network=Network.TESTNET)
+    priv_key = PrivateKey(private_key_wif, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = priv_key.address()
 
     # Fetch all UTXOs for the address
@@ -216,10 +216,10 @@ async def consolidate_addresses_into_bank(private_key_wifs: list[str]) -> str | 
 
     all_tx_inputs = []
     total_input_satoshis = 0
-    priv_key_bank = PrivateKey(Config.PRIVATE_BANK_KEY_WIF, network=Network.TESTNET) # Bank key for signing the consolidation
+    priv_key_bank = PrivateKey(Config.PRIVATE_BANK_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV) # Bank key for signing the consolidation
     
     for wif in private_key_wifs:
-        current_priv_key = PrivateKey(wif, network=Network.TESTNET)
+        current_priv_key = PrivateKey(wif, network=Config.ACTIVE_NETWORK_BSV)
         current_address = current_priv_key.address()
         print(f"  Fetching UTXOs for address: {current_address}")
         
@@ -299,8 +299,11 @@ async def create_working_utxos(recipient_address: str, utxo_value: int, num_utxo
     """
     print(f"\n--- Creating {num_utxos} Working UTXOs of {utxo_value} satoshis each ---")
 
-    priv_key_bank = PrivateKey(Config.PRIVATE_BANK_KEY_WIF, network=Network.TESTNET)
-    bank_address = priv_key_bank.address()
+    priv_key_bank = PrivateKey(Config.PRIVATE_BANK_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
+
+
+    assert Config.BANK_ADDRESS is not None
+    bank_address = Config.BANK_ADDRESS
 
     # Fetch all UTXOs belonging to the bank's address to fund this transaction
     utxos_from_bank = await blockchain_api.fetch_utxos_for_address(bank_address)
@@ -377,7 +380,7 @@ async def create_working_utxos(recipient_address: str, utxo_value: int, num_utxo
     return tx.hex()
 
 async def log_intermediate_result_process():
-    priv_key_funding = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Network.TESTNET)
+    priv_key_funding = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = priv_key_funding.address()
 
 
@@ -390,17 +393,14 @@ async def log_intermediate_result_process():
     # This ensures our local store is aligned with the key being used.
     if store.get("address") != sender_address:
          print(f"Warning: UTXO store address ({store.get('address', 'N/A')}) does not match sender address ({sender_address}). Re-initializing UTXO store for sender.")
-         await wallet_manager.initialize_utxo_store(Config.UTXO_STORE_KEY_WIF, "test") # Pass WIF string
+         await wallet_manager.initialize_utxo_store(Config.UTXO_STORE_KEY_WIF) # Pass WIF string
          store = wallet_manager.load_utxo_store() # Reload after init
 
     if tx_store.get("address") != sender_address:
         print(f"Warning: TX store address ({tx_store.get('address', 'N/A')}) does not match sender address ({sender_address}). Re-initializing TX store for sender.")
-        await wallet_manager.initialize_utxo_store(Config.UTXO_STORE_KEY_WIF, "test") # Pass WIF string
+        await wallet_manager.initialize_utxo_store(Config.UTXO_STORE_KEY_WIF) # Pass WIF string
         tx_store = wallet_manager.load_tx_store() # Reload after init
     
-
-
-
 
 
     # --- SIMULATE AN INTERMEDIATE PROCESS RESULT ---
@@ -465,15 +465,15 @@ async def log_intermediate_result_process():
     # This function now returns the full transaction hex, broadcast timestamp, and TXID.
     # It also handles broadcasting and initial updates to the rawtx cache (tx_store.json).
     assert Config.UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF must be set"
+    
     tx_hex_returned, broadcast_timestamp_str, broadcast_txid, \
         consumed_utxos_details, new_utxos_details = await audit_core.create_op_return_transaction(
             spending_key_wif=Config.UTXO_STORE_KEY_WIF, 
             recipient_address=sender_address, # Change goes back here
             op_return_data_pushes=op_return_payload_for_tx,
             original_audit_content_string=intermediate_audit_content_string, # Pass original content for internal hashing/verification
-            network=Network.TESTNET
+            network=Config.ACTIVE_NETWORK_BSV
     )
-
 
 
     # 3. Update the audit record with broadcast details and handle UTXO state
@@ -521,7 +521,7 @@ async def log_intermediate_result_process():
         # --- VERIFY THE TRANSACTION'S OP_RETURN CONTENT IMMEDIATELY (OPTIONAL BUT GOOD) ---
         # This verification uses the raw transaction hex that was just created.
         original_hash_expected = sha256(intermediate_audit_content_string.encode('utf-8'))
-        original_public_key_hex_expected = PrivateKey(Config.PRIVATE_SIGNING_KEY_WIF, network=Network.TESTNET).public_key().hex()
+        original_public_key_hex_expected = PrivateKey(Config.PRIVATE_SIGNING_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV).public_key().hex()
 
         verification_passed = await audit_core.verify_op_return_hash_sig_pub(
             tx_hex_returned, # Use the returned raw transaction hex for immediate verification

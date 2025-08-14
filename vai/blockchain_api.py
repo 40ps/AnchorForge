@@ -22,7 +22,7 @@ async def get_merkle_path(txid: str) -> Dict:
         Dict: Merkle-Path-Data (index, nodes, target).
     """
     try:
-        url = f"{Config.WOC_TESTNET_API_BASE_URL}/tx/{txid}/proof/tsc"
+        url = f"{Config.WOC_API_BASE_URL}/tx/{txid}/proof/tsc"
         print(f"  Fetching Merkle path from: {url}")
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=10.0) # Use await here
@@ -43,7 +43,7 @@ async def get_block_header_height(block_height: int) -> dict:
     """
     Fetches block header by height from WhatsOnChain using httpx.
     """
-    url = f"{Config.WOC_TESTNET_API_BASE_URL}/block/height/{block_height}"
+    url = f"{Config.WOC_API_BASE_URL}/block/height/{block_height}"
     print(f"  Fetching block header by height from: {url}")
     async with httpx.AsyncClient() as client:
         response = await client.get(url, timeout=10.0)
@@ -61,7 +61,7 @@ async def get_block_header(block_hash: str) -> Dict:
         Dict: Block header data.
     """
     try:
-        url = f"{Config.WOC_TESTNET_API_BASE_URL}/block/{block_hash}/header"
+        url = f"{Config.WOC_API_BASE_URL}/block/{block_hash}/header"
         print(f"  Fetching block header by hash from: {url}")
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=10.0)
@@ -86,10 +86,10 @@ async def get_merkle_proof(transaction_id: str) -> dict | None:
         dict | None: A dictionary containing the Merkle proof details if successful, None otherwise.
                      The dictionary typically includes 'blockhash', 'merkleProof', 'txid', 'pos'.
     """
-    #url = f"{Config.WOC_TESTNET_API_BASE_URL}/tx/{transaction_id}/merkle-proof"
+    #url = f"{Config.WOC_API_BASE_URL}/tx/{transaction_id}/merkle-proof"
    
     print(f"\n--- Fetching Merkle Proof for TXID: {transaction_id} ---")
-    url = f"{Config.WOC_TESTNET_API_BASE_URL}/tx/{transaction_id}/proof/tsc"
+    url = f"{Config.WOC_API_BASE_URL}/tx/{transaction_id}/proof/tsc"
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url, timeout=110.0)
@@ -113,7 +113,7 @@ async def get_chain_info_woc() -> Dict | None:
     """
     Fetches general blockchain information (including the latest block height) from WhatsOnChain.
     """
-    url = f"{Config.WOC_TESTNET_API_BASE_URL}/chain/info"
+    url = f"{Config.WOC_API_BASE_URL}/chain/info"
     logging.info(f"  Fetching chain info from: {url}")
     async with httpx.AsyncClient() as client:
         try:
@@ -138,7 +138,7 @@ async def get_transaction_status_woc(txid: str) -> Dict | None:
         Dict | None: A dictionary with transaction details, including 'blockhash' and 'blockheight'
                      if confirmed. Returns None on error or if not found.
     """
-    url = f"{Config.WOC_TESTNET_API_BASE_URL}/tx/hash/{txid}"
+    url = f"{Config.WOC_API_BASE_URL}/tx/hash/{txid}"
     print(f"  Checking status of TXID {txid} from: {url}")
     async with httpx.AsyncClient() as client:
         try:
@@ -172,7 +172,7 @@ async def fetch_utxos_for_address(address: str) -> list[dict]:
                     'tx_hash', 'tx_pos' (output index), 'value' (in satoshis).
                     Note: 'scriptPubKey' is NOT returned by WhatsOnChain /unspent endpoint directly.
     """
-    url = f"{Config.WOC_TESTNET_API_BASE_URL}/address/{address}/unspent"
+    url = f"{Config.WOC_API_BASE_URL}/address/{address}/unspent"
     print(f"Attempting to fetch UTXOs from: {url}") # Debugging: Print URL
     async with httpx.AsyncClient() as client:
         try:
@@ -204,7 +204,7 @@ async def fetch_utxos_for_address(address: str) -> list[dict]:
 
 # Helper for fetch_raw_transaction_hex (defined here because it's only used internally by main transaction methods)
 async def fetch_raw_transaction_hex(txid: str) -> str | None:
-    url = f"{Config.WOC_TESTNET_API_BASE_URL}/tx/{txid}/hex"
+    url = f"{Config.WOC_API_BASE_URL}/tx/{txid}/hex"
     print(f"  Attempting to fetch raw transaction hex from: {url}") # Debugging: Print URL
     async with httpx.AsyncClient() as client:
         try:
@@ -233,7 +233,7 @@ async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
     Returns:
         str | None: The transaction ID (TXID) if broadcast is successful, None otherwise.
     """
-    url = f"{Config.WOC_TESTNET_API_BASE_URL}/tx/raw"
+    url = f"{Config.WOC_API_BASE_URL}/tx/raw"
     headers = {'Content-Type': 'application/json'}
     payload = {'txhex': signed_raw_tx_string}
 
