@@ -468,7 +468,7 @@ def build_audit_payload(
     audit_hash = sha256(data_bytes_for_hash)
     
     # Perform signing
-    private_signing_key_obj = PrivateKey(signing_key_wif, network=Network.TESTNET)
+    private_signing_key_obj = PrivateKey(signing_key_wif, network=Config.ACTIVE_NETWORK_BSV)
     public_signing_key_obj = private_signing_key_obj.public_key()
     audit_signature = private_signing_key_obj.sign(audit_hash)
 
@@ -518,9 +518,11 @@ async def create_op_return_transaction(
 
     """Create and send a transaction using the local UTXO store."""
     
-
+    '''
     if network not in Config.NETWORK_API_ENDPOINTS:
         raise ValueError("Invalid network. Use 'main' or 'test'.")
+    
+    '''
     
     priv_key = PrivateKey(spending_key_wif, network)
     sender_address = priv_key.address()
