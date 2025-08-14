@@ -86,6 +86,7 @@ def generate_key_pair(
 # Example of how to use this function
 if __name__ == "__main__":
     # Example for Testnet
+    '''
     generate_key_pair(
         network_type='test',
         label='bank_key_testnet',
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     )
 
 
-
+  '''
     generate_key_pair(
         network_type='main',
         label='bank_account',
@@ -108,5 +109,11 @@ if __name__ == "__main__":
     generate_key_pair(
         network_type='main',
         label='utxo_account',
-        comment='Bankaccount to maintain funds for spending in audits'
+        comment='audit trail receipts'
+    )
+  
+    generate_key_pair(
+        network_type='main',
+        label='signing_key',
+        comment='Signing key to demo for signing the hash'
     )
