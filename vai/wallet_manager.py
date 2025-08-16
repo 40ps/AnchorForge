@@ -74,28 +74,6 @@ def save_tx_store(store: Dict, file_path: str):
         json.dump(store, f, indent=4)
 
 
-def load_block_headers() -> Dict[str, Dict]:
-    """
-    Loads cached block headers from the BLOCK_HEADERS_FILE.
-    Returns a dictionary mapping blockhash to block header data.
-    """
-    try:
-        with open(Config.BLOCK_HEADERS_FILE, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        # The block headers store is a dictionary, so it starts empty.
-        return {}
-
-
-def save_block_headers(headers_data: Dict[str, Dict]):
-    """
-    Saves block headers to the BLOCK_HEADERS_FILE.
-    """
-    with open(Config.BLOCK_HEADERS_FILE, 'w') as f:
-        json.dump(headers_data, f, indent=4)
-
-
-
 async def initialize_utxo_store(private_key_wif: str, network_name: str):
     """
     Initialize the UTXO store with UTXOs from the blockchain.
