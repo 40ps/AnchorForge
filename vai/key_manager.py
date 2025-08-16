@@ -1,8 +1,14 @@
 # key_manager.py
-import os
+'''
+V25-08-16: added access to private key via label
+
+
+TODO add Net type for query
+'''
+import os 
 import json
 from datetime import datetime, timezone
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 from bsv import PrivateKey, Network
 
@@ -83,9 +89,57 @@ def generate_key_pair(
     
     return key_pair_data
 
-# Example of how to use this function
-if __name__ == "__main__":
-    # Example for Testnet
+
+def get_private_key_by_label(label: str, file_path: Optional[str] = None) -> Optional[str]:
+    """
+    Retrieves a private key (WIF) from the key store file by its label.
+
+    Args:
+        label (str): The label of the key to retrieve.
+        file_path (Optional[str]): Path to the key store file. If None,
+                                   it uses a default path (to be defined in config).
+
+    Returns:
+        Optional[str]: The private key in WIF format, or None if the key is not found.
+    """
+    # Use the default path if not provided
+    store_file_path = file_path if file_path else "key_pairs.json"
+    
+    # Load the entire key store
+    key_store = load_key_store(store_file_path)
+    
+    # Search for the key by its label
+    for key_pair in key_store.get("key_pairs", []):
+        if key_pair.get("label") == label:
+            return key_pair.get("private_key_wif")
+            
+    # Return None if no matching label was found
+    return None
+
+def get_key_pair_by_label(label: str, file_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves the full key pair data (private key, public address, network)
+    from the key store file by its label.
+
+    Args:
+        label (str): The label of the key pair to retrieve.
+        file_path (Optional[str]): Path to the key store file. If None,
+                                   it uses a default path (to be defined in config).
+
+    Returns:
+        Optional[Dict[str, Any]]: The full key pair data dictionary, or None if not found.
+    """
+    store_file_path = file_path if file_path else "key_pairs.json"
+    key_store = load_key_store(store_file_path)
+    
+    for key_pair in key_store.get("key_pairs", []):
+        if key_pair.get("label") == label:
+            return key_pair
+            
+    return None
+
+def gen_specific_keys():
+    
     '''
     generate_key_pair(
         network_type='test',
@@ -117,3 +171,30 @@ if __name__ == "__main__":
         label='signing_key',
         comment='Signing key to demo for signing the hash'
     )
+
+# Example of how to use this function
+if __name__ == "__main__":
+   
+    new_key = generate_key_pair(
+        network_type='test',
+        label='temp_key',
+        comment='Temporary key for a single transaction demo.'
+    )
+    
+    # Retrieve the private key of the generated key pair using its label
+    private_key_wif = get_private_key_by_label('temp_key')
+    if private_key_wif:
+        print(f"\nRetrieved private key (WIF) for 'temp_key': {private_key_wif}")
+    else:
+        print("\nCould not find a private key with the label 'temp_key'.")
+
+
+    key_info = get_key_pair_by_label('temp_key')
+    if key_info:
+        print("\n--- Retrieved Full Key Pair Info ---")
+        print(f"Label: {key_info.get('label')}")
+        print(f"Private Key WIF: {key_info.get('private_key_wif')}")
+        print(f"Public Address: {key_info.get('public_address')}")
+        print(f"Network: {key_info.get('network')}")
+    else:
+        print("\nCould not find full key pair info with the label 'temp_key'.")
