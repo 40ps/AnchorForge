@@ -141,10 +141,17 @@ async def main():
 async def mainmain():
     header_manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
 
-    priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Network.TESTNET)
+    assert Config.UTXO_STORE_KEY_WIF is not None, "UTXO STORE Key not set"
+    priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = priv_key.address()
 
-    await wallet_manager.initialize_utxo_store(Config.UTXO_STORE_KEY_WIF)
+
+    # Create dynamic file paths based on the sender's address
+    utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME)
+    tx_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "tx_store")
+    used_utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "used_utxo_store")
+
+    await wallet_manager.initialize_utxo_store(Config.UTXO_STORE_KEY_WIF, Config.ACTIVE_NETWORK_NAME)
 
     latest_height_info = await blockchain_api.get_chain_info_woc()
     if latest_height_info:
@@ -154,12 +161,13 @@ async def mainmain():
         await sync_block_headers(header_manager, start_height=sync_start_height, end_height=current_latest_chain_height)
 
     # Start the monitoring task in the background
-    monitor_task = asyncio.create_task(audit_core.monitor_pending_transactions(polling_interval_seconds=Config.MONITOR_POLLING_INTERVAL)) # Poll frequently for demo
+    monitor_task = asyncio.create_task(
+        audit_core.monitor_pending_transactions(utxo_file_path, used_utxo_file_path, polling_interval_seconds=Config.MONITOR_POLLING_INTERVAL))
     logging.info("Monitor task has been scheduled to run in the background.") 
     
     # Simulate logging an intermediate result
     logging.info("\n--- Initiating Intermediate Result Logging Process ---")
-    await bank_functions.log_intermediate_result_process()
+    await bank_functions.log_intermediate_result_process(utxo_file_path, used_utxo_file_path, tx_file_path)
 
     # Example of logging multiple audit records (optional)
     # for i in range(2): 

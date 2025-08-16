@@ -30,13 +30,13 @@ class Config:
     WOC_API_BASE_URL: Optional[str] = os.getenv(f"{NETWORK_PREFIX}WOC_API_BASE_URL")
     assert WOC_API_BASE_URL is not None, "WOC_API_BASE_URL must be set in environment variable"
 
-    '''
+    
     # --- Network-specific API Endpoints ---
     NETWORK_API_ENDPOINTS = {
         "main": "https://api.whatsonchain.com/v1/bsv/main",
-        "test": WOC_API_BASE_URL
+        "test": "https://api.whatsonchain.com/v1/bsv/test"
     }
-    '''
+    
 
     # --- Secrets (loaded from .env) ---
     # It's good practice to handle mandatory keys explicitly.
