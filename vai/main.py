@@ -73,7 +73,7 @@ from blockchain_service import sync_block_headers
 
 import wallet_manager
 import audit_core
-import bank_functions
+import main_audit_log_event
 
 import utils
 
@@ -167,7 +167,8 @@ async def mainmain():
     
     # Simulate logging an intermediate result
     logging.info("\n--- Initiating Intermediate Result Logging Process ---")
-    await bank_functions.log_intermediate_result_process(utxo_file_path, used_utxo_file_path, tx_file_path)
+    await main_audit_log_event.log_intermediate_result_process()
+            #utxo_file_path, used_utxo_file_path, tx_file_path)
 
     # Example of logging multiple audit records (optional)
     # for i in range(2): 
@@ -184,12 +185,6 @@ async def mainmain():
         await monitor_task # Await its cancellation
     except asyncio.CancelledError:
         print("Transaction monitor task cancelled gracefully.")
-
-
-
-    # --- FINAL VERIFICATION STEP: AUDITOR'S PERSPECTIVE ---
-
-    await audit_core.audit_all_records()
 
 
     '''
