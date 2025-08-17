@@ -143,15 +143,14 @@ async def sync_blockheaders() :
 
 
 async def setup_wallet_environment():
-    
-    pk = key_manager.get_private_key_by_label('M-bank_account')
+    # pk = key_manager.get_private_key_by_label('T-bank_account')
     # pk = Config.PRIVATE_BANK_KEY_WIF # default: fill with itself to show
-    assert pk is not None, "No key from key file"
+    # assert pk is not None, "No key from key file"
  
-    await fill_bank_with(pk) # now it is just filling itself
-    await create_utxolets(1000,5)
+    # await fill_bank_with(pk) # now it is just filling itself
+    # await create_utxolets(1000,5)
     await initialize_utxo_store()
-    await sync_blockheaders()
+    # await sync_blockheaders()
 
 
 
