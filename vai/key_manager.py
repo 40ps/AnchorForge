@@ -12,8 +12,10 @@ from typing import Optional, Dict, Any
 
 from bsv import PrivateKey, Network
 
+from config import Config
 
-# REQ: KEYPAIR_STORE_FILE = "key_pairs.json" # TODO MOVE to secure!
+
+# REQ: Config.KEYPAIR_STORE_FILE = "../config/locakey_pairs.json" # see Config.
 
 from config import Config
 
@@ -103,7 +105,9 @@ def get_private_key_by_label(label: str, file_path: Optional[str] = None) -> Opt
         Optional[str]: The private key in WIF format, or None if the key is not found.
     """
     # Use the default path if not provided
-    store_file_path = file_path if file_path else "key_pairs.json"
+    store_file_path = file_path if file_path else Config.KEYPAIR_STORE_FILE
+
+    assert store_file_path is not None
     
     # Load the entire key store
     key_store = load_key_store(store_file_path)
@@ -129,7 +133,9 @@ def get_key_pair_by_label(label: str, file_path: Optional[str] = None) -> Option
     Returns:
         Optional[Dict[str, Any]]: The full key pair data dictionary, or None if not found.
     """
-    store_file_path = file_path if file_path else "key_pairs.json"
+    store_file_path = file_path if file_path else Config.KEYPAIR_STORE_FILE
+    assert store_file_path is not None
+    
     key_store = load_key_store(store_file_path)
     
     for key_pair in key_store.get("key_pairs", []):
@@ -156,40 +162,43 @@ def gen_specific_keys():
   '''
     generate_key_pair(
         network_type='main',
-        label='bank_account',
+        label='M-bank_account',
         comment='Bankaccount to maintain funds for spending in audits'
     )
 
     generate_key_pair(
         network_type='main',
-        label='utxo_account',
+        label='M-utxo_account',
         comment='audit trail receipts'
     )
   
     generate_key_pair(
         network_type='main',
-        label='signing_key',
+        label='M-signing_key',
         comment='Signing key to demo for signing the hash'
     )
 
 # Example of how to use this function
 if __name__ == "__main__":
-   
+    '''
     new_key = generate_key_pair(
         network_type='test',
         label='temp_key',
         comment='Temporary key for a single transaction demo.'
     )
-    
+    '''
+   
+
     # Retrieve the private key of the generated key pair using its label
-    private_key_wif = get_private_key_by_label('temp_key')
+    label = 'T-bank_account'
+    private_key_wif = get_private_key_by_label(label)
     if private_key_wif:
-        print(f"\nRetrieved private key (WIF) for 'temp_key': {private_key_wif}")
+        print(f"\nRetrieved private key (WIF) for '{label}': {private_key_wif}")
     else:
-        print("\nCould not find a private key with the label 'temp_key'.")
+        print(f"\nCould not find a private key with the label '{label}'.")
 
 
-    key_info = get_key_pair_by_label('temp_key')
+    key_info = get_key_pair_by_label(label)
     if key_info:
         print("\n--- Retrieved Full Key Pair Info ---")
         print(f"Label: {key_info.get('label')}")
@@ -197,4 +206,4 @@ if __name__ == "__main__":
         print(f"Public Address: {key_info.get('public_address')}")
         print(f"Network: {key_info.get('network')}")
     else:
-        print("\nCould not find full key pair info with the label 'temp_key'.")
+        print("\nCould not find full key pair info with the label '{label}'.")
