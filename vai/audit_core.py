@@ -224,7 +224,108 @@ def verify_op_return_hash(raw_tx_hex: str, expected_hash_bytes: bytes) -> bool:
         logger.error(f"Error during OP_RETURN hash verification: {e}")
         return False
 
+
 async def verify_op_return_hash_sig_pub(
+    raw_tx_hex: str,
+    expected_hash: bytes,
+    expected_public_key_hex: str
+) -> bool:
+    """
+    Gets the OP_RETURN from raw_tx_hex, identifies the 3 arguments
+    (hash, signature, public key), and performs verification.
+    """
+    logger.info("\n--- Verifying OP_RETURN Hash, Signature, and Public Key ---")
+    
+    try:
+        tx = Transaction.from_hex(raw_tx_hex)
+        if tx is None:
+            logger.error(f"ERROR: Tx is None")
+            return False
+
+        for tx_output in tx.outputs:
+            locking_script = tx_output.locking_script
+            
+            # ---  Robust check for OP_RETURN opcode to handle different data types ---
+            first_chunk_op_raw = locking_script.chunks[0].op if locking_script.chunks else None
+            is_op_return = False
+            if isinstance(first_chunk_op_raw, int):
+                if first_chunk_op_raw == 0x6a:
+                    is_op_return = True
+            elif isinstance(first_chunk_op_raw, bytes) and len(first_chunk_op_raw) == 1:
+                if first_chunk_op_raw[0] == 0x6a:
+                    is_op_return = True
+            
+            if not is_op_return:
+                continue
+
+            logger.info(f"Found OP_RETURN output: {locking_script.to_asm()}")
+
+            # (1) Check for expected number of data pushes
+            if len(locking_script.chunks) < 4:
+                logger.warning("OP_RETURN script does not contain enough data elements.")
+                return False
+
+            # (2) Extract and validate data pushes
+            extracted_hash_bytes = locking_script.chunks[1].data
+            extracted_signature_bytes = locking_script.chunks[2].data
+            extracted_public_key_bytes = locking_script.chunks[3].data
+
+            # convince linter
+            assert extracted_hash_bytes is not None
+            assert extracted_signature_bytes is not None
+            assert extracted_public_key_bytes is not None
+
+
+            if any(x is None for x in [extracted_hash_bytes, extracted_signature_bytes, extracted_public_key_bytes]):
+                logger.warning("One or more data elements are not valid data pushes.")
+                return False
+
+            # (3) Perform robust length checks
+            if not (
+                len(extracted_hash_bytes) == 32 and
+                30 <= len(extracted_signature_bytes) <= 72 and
+                (len(extracted_public_key_bytes) == 33 or len(extracted_public_key_bytes) == 65)
+            ):
+                logger.warning("Data element length mismatch detected.")
+                return False
+
+            logger.info(f"  Extracted Hash: {extracted_hash_bytes.hex()}")
+            logger.info(f"  Extracted Public Key: {extracted_public_key_bytes.hex()}")
+            
+            # (4) Compare the hash
+            if extracted_hash_bytes != expected_hash:
+                logger.warning(f"  Hash comparison: FAIL")
+                return False
+            logger.info("  Hash comparison: PASS")
+
+            # (5) Compare the public key
+            if extracted_public_key_bytes.hex() != expected_public_key_hex.lower():
+                logger.warning(f"  Public Key comparison: FAIL")
+                return False
+            logger.info("  Public Key comparison: PASS")
+
+            # (6) Verify the signature
+            try:
+                pub_key = PublicKey(extracted_public_key_bytes)
+                if pub_key.verify(extracted_signature_bytes, extracted_hash_bytes):
+                    logger.info("  Signature verification: PASS")
+                    return True # Success path, we can exit here
+                else:
+                    logger.warning("  Signature verification: FAIL")
+                    return False
+            except Exception as sig_err:
+                logger.error(f"  Error during signature verification: {sig_err}")
+                return False
+
+    except Exception as e:
+        logger.error(f"Error during OP_RETURN verification: {e}")
+        return False
+        
+    # Final return for the case where no OP_RETURN output was found after checking all outputs
+    logger.info("No OP_RETURN output found in the transaction.")
+    return False
+
+async def verify_op_return_hash_sig_pub_old_26_08_16(#not robust enough
     raw_tx_hex: str,
     expected_hash: bytes,
     expected_public_key_hex: str
@@ -314,6 +415,9 @@ async def verify_op_return_hash_sig_pub(
     # Final return for the case where no OP_RETURN output was found after checking all outputs
     logger.info("No OP_RETURN output found in the transaction.")
     return False
+
+
+
 
 # --- Verify OP_RETURN hash, signature, and public key ---
 async def verify_op_return_hash_sig_pub_old( #TODO check the new method!
