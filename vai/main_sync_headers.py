@@ -30,7 +30,9 @@ async def main_sync_headers():
     to a local cache for later use in SPV proofs.
     """
     logging.info("\n--- Starting Block Header Synchronization ---")
-    header_manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
+
+    dynamic_header_file_path = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+    header_manager = BlockHeaderManager(dynamic_header_file_path)
     try:
         chain_info = await blockchain_api.get_chain_info_woc()
         if chain_info and chain_info.get("blocks") is not None:

@@ -67,14 +67,21 @@ class Config:
 
     
     # --- File Paths ---
-    # These are not secrets and can remain in the code, but you could also move them to .env.
-    UTXO_STORE_FILE = "utxo_store.json"
-    USED_UTXO_STORE_FILE = "used_utxo_store.json"
-    TX_STORE_FILE = "tx_store.json"
-    AUDIT_LOG_FILE = "audit_log.json"
-    BLOCK_HEADERS_FILE = "block_headers.json"
-    LOG_FILE = "application.log"
+    # --- File Paths ---
+    # File paths are now dynamically named based on the active network
+    UTXO_STORE_FILE = f"utxo_store_{ACTIVE_NETWORK_NAME}.json"
+    USED_UTXO_STORE_FILE = f"used_utxo_store_{ACTIVE_NETWORK_NAME}.json"
+    TX_STORE_FILE = f"tx_store_{ACTIVE_NETWORK_NAME}.json"
+
+    # 
+    LOG_FILE = f"application_{ACTIVE_NETWORK_NAME}.log"
+
+    # 
+    AUDIT_LOG_FILE = f"audit_log_{ACTIVE_NETWORK_NAME}.json"
+
     
+    BLOCK_HEADERS_FILE = f"block_headers_{ACTIVE_NETWORK_NAME}.json"
+
 
 
 

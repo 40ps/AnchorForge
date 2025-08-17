@@ -890,7 +890,9 @@ async def audit_record_verifier(log_id: str) -> bool:
     overall_success = True
 
     audit_log = load_audit_log()
-    header_manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
+
+    dynamic_header_file_path = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+    header_manager = BlockHeaderManager(dynamic_header_file_path)
     local_block_headers = header_manager.headers
 
     record = next((r for r in audit_log if r.get("log_id") == log_id), None)

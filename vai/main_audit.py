@@ -32,9 +32,11 @@ async def main_auditor():
     logging.info("\n--- Starting the Auditor Application ---")
 
     # Check if block headers are available. A simple check is to see if the file exists and has content.
-    header_manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
+    dynamic_block_header_file_path = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+    header_manager = BlockHeaderManager(dynamic_block_header_file_path)
     if not header_manager.headers:
         logging.warning("Local block header cache is empty or not found. Cannot perform full off-chain audit.")
+        logging.warning(f"Tried block header file: {dynamic_block_header_file_path}")
         logging.warning("Please run main_sync_headers.py first to prepare the auditor's environment.")
         return
 
