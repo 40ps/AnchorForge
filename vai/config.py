@@ -49,13 +49,22 @@ class Config:
     # The bank address is not a secret, but it's good to keep it with the bank key.
     BANK_ADDRESS: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}BANK_ADDRESS")
     
+
+    KEYPAIR_STORE_FILE: Optional[str] = os.getenv("KEYPAIR_STORE_FILE")
+    
+
+
     assert PRIVATE_KEY_WIF is not None, "PRIVATE_KEY_WIF must be set in environment variable"
     assert UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF must be set in environment variable"
     assert PRIVATE_BANK_KEY_WIF is not None, "PRIVATE_BANK_KEY_WIF must be set in environment variable"
     assert PRIVATE_SIGNING_KEY_WIF is not None, "PRIVATE_SIGNING_KEY_WIF must be set in environment variable"
 
+    assert KEYPAIR_STORE_FILE is not None, "KEYPAIR_STORE_FILE must be set in environment variable"
+
     # The bank address is not a secret, but it's good to keep it with the bank key.
     assert BANK_ADDRESS is not None, "BANK_ADDRESS must be set in environment variable"
+    
+
     
     # --- File Paths ---
     # These are not secrets and can remain in the code, but you could also move them to .env.
@@ -66,10 +75,6 @@ class Config:
     BLOCK_HEADERS_FILE = "block_headers.json"
     LOG_FILE = "application.log"
     
-    KEYPAIR_STORE_FILE: Optional[str] = os.getenv("KEYPAIR_STORE_FILE")
-    assert KEYPAIR_STORE_FILE is not None, "KEYPAIR_STORE_FILE must be set in environment variable"
-    
-
 
 
 
