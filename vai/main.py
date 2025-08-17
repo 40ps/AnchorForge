@@ -128,18 +128,18 @@ def save_block_headers(headers_data: Dict[str, Dict]):
 
 
 async def main():
-    header_manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
+    dynamic_header_file_path = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+    header_manager = BlockHeaderManager(dynamic_header_file_path)
 
     # await sync_block_headers(1683340)
-
     #result = await audit_record_verifier("2542298b-57aa-4480-b283-6ebaffa009e0")
-    
-    await audit_core.audit_all_records()
+    # await audit_core.audit_all_records()
     
     print(f"Audit Test Ende ")
 
 async def mainmain():
-    header_manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
+    dynamic_header_file_path = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+    header_manager = BlockHeaderManager(dynamic_header_file_path)
 
     assert Config.UTXO_STORE_KEY_WIF is not None, "UTXO STORE Key not set"
     priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)

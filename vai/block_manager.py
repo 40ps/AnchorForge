@@ -35,6 +35,7 @@ class BlockHeaderManager:
 
 # Example use
 # from block_manager import BlockHeaderManager
+# dynamic_header_file_path = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
 # manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
 #
 # print(f"Loaded {len(manager.headers)} block headers.")

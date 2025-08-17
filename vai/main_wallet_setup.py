@@ -122,7 +122,9 @@ async def sync_blockheaders() :
     # This step is crucial for the AUDITOR, not for transaction creation.
     # It ensures the auditor has a local chain of trust.
     logging.info("\nSynchronizing recent block headers for SPV proof verification.")
-    header_manager = BlockHeaderManager(Config.BLOCK_HEADERS_FILE)
+    
+    dynamic_block_header_file_path = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+    header_manager = BlockHeaderManager(dynamic_block_header_file_path)
     try:
         chain_info = await blockchain_api.get_chain_info_woc()
         if chain_info and chain_info.get("blocks") is not None:
