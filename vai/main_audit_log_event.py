@@ -99,7 +99,7 @@ async def log_intermediate_result_process():
 
     # 2. Create the blockchain transaction containing the audit payload.
     assert Config.UTXO_STORE_KEY_WIF is not None #linter
-    
+
     tx_hex_returned, broadcast_timestamp_str, broadcast_txid, \
         consumed_utxos_details, new_utxos_details = await audit_core.create_op_return_transaction(
             spending_key_wif=Config.UTXO_STORE_KEY_WIF, 
@@ -108,7 +108,8 @@ async def log_intermediate_result_process():
             original_audit_content_string=intermediate_audit_content_string,
             network=Config.ACTIVE_NETWORK_BSV,
             utxo_file_path=utxo_file_path,
-            tx_file_path=tx_file_path
+            tx_file_path=tx_file_path,
+            note="40ps/vai"
     )
 
     # 3. Update the audit record with broadcast details and handle UTXO state

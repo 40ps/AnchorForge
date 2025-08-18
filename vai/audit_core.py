@@ -592,7 +592,8 @@ async def create_op_return_transaction(
         original_audit_content_string: str,
         network: Network,
         utxo_file_path: str,
-        tx_file_path: str
+        tx_file_path: str,
+        note: Optional[str] = None
 ) -> tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict]]:
     """
     Creates a Bitcoin SV transaction with an OP_RETURN output and returns change.
@@ -605,7 +606,8 @@ async def create_op_return_transaction(
         network (Network): The bsv.Network object for the transaction.
         utxo_file_path (str): The file path for the UTXO store.
         tx_file_path (str): The file path for the transaction store.
-
+        note (Optional[str]): An optional note to be added as a fourth data push to OP_RETURN.
+    
     Returns:
          tuple[str | None, str | None, str | None, List[Dict], List[Dict]]:
             Now returns (raw_tx_hex, timestamp_broadcasted, txid, consumed_utxos_details, new_utxos_details).
@@ -682,6 +684,10 @@ async def create_op_return_transaction(
     if op_return_data_pushes:
         for data_bytes in op_return_data_pushes:
             op_return_script_parts.append(data_bytes.hex())
+
+    if note:
+        note_bytes = note.encode('utf-8')
+        op_return_script_parts.append(note_bytes.hex())
 
     op_return_script_asm = " ".join(op_return_script_parts) 
     op_return_script = Script.from_asm(op_return_script_asm)
