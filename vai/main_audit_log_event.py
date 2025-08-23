@@ -18,6 +18,8 @@ import audit_core
 from bsv import PrivateKey
 from bsv.hash import sha256
 
+import key_x509_manager
+
 # Configure logging for this specific program
 logging.basicConfig(
     level=logging.INFO,
@@ -70,7 +72,34 @@ async def log_intermediate_result_process():
         intermediate_audit_content_string, 
         own_signing_key
     )
-    
+
+
+    # --- BUILD AND APPEND THE X.509 PAYLOAD ---
+    # Initialize the x509_payload to avoid UnboundLocalError
+    x509_payload = []
+    cert_info = key_x509_manager.get_x509_key_pair_by_label('test_certificate')
+    if cert_info:
+        #
+        private_x509_key_pem = cert_info.get('private_key_pem')
+        x509_cert_pem = cert_info.get('certificate_pem')
+
+        assert private_x509_key_pem is not None, "TODO Better log + Error treatment"
+        assert x509_cert_pem is not None, "TODO Better log + Error treatment"
+        
+        x509_payload = audit_core.build_x509_audit_payload(
+            intermediate_audit_content_string, 
+            private_x509_key_pem, 
+            x509_cert_pem
+        )
+
+        # Add payload
+        op_return_payload_for_tx.extend(x509_payload)
+
+        # how to adapt payload TODO
+    else:
+        logging.warning("X.509 certificate with label 'test_certificate' not found. Skipping X.509 payload.")
+
+
     # Create a new audit record entry locally.
     audit_record_entry = {
         "log_id": str(uuid.uuid4()),
@@ -82,6 +111,9 @@ async def log_intermediate_result_process():
             "data_hash_pushed_to_op_return": op_return_payload_for_tx[0].hex(),
             "signature_pushed_to_op_return": op_return_payload_for_tx[1].hex(),
             "public_key_pushed_to_op_return": op_return_payload_for_tx[2].hex(),
+            "x509_hash_pushed": None,
+            "x509_signature_pushed": None,
+            "x509_certificate_pushed": None,
             "status": "pending_creation",
             "timestamp_broadcasted_utc": None,
             "timestamp_confirmed_utc": None,
@@ -91,6 +123,14 @@ async def log_intermediate_result_process():
         },
         "notes": "Intermediate process result audit log entry"
     }
+
+    # --- Extend the audit record with X.509 data if available ---
+    if x509_payload:
+        audit_record_entry["blockchain_record"]["x509_hash_pushed"] = x509_payload[0].hex()
+        audit_record_entry["blockchain_record"]["x509_signature_pushed"] = x509_payload[1].hex()
+        audit_record_entry["blockchain_record"]["x509_certificate_pushed"] = x509_payload[2].hex()
+        logging.info("X.509 payload data added to audit record.")
+    
     
     audit_log = audit_core.load_audit_log()
     audit_log.append(audit_record_entry)
