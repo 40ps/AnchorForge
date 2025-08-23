@@ -52,7 +52,7 @@ class Config:
 
     KEYPAIR_STORE_FILE: Optional[str] = os.getenv("KEYPAIR_STORE_FILE")
     
-
+    X509_KEYPAIR_STORE_FILE : Optional[str] = os.getenv("X509_KEYPAIR_STORE_FILE", "../local_config/local_x509_keys.json")
 
     assert PRIVATE_KEY_WIF is not None, "PRIVATE_KEY_WIF must be set in environment variable"
     assert UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF must be set in environment variable"
@@ -92,6 +92,9 @@ class Config:
     MAINSCRIPT_RUNNING = int(os.getenv("MAINSCRIPT_RUNNING", 1000))
     IGNORE_REST = os.getenv("IGNORE_REST", "True").lower() in ('true', '1', 't')
     
+    ACCESS_TIMEOUT = 5
+
+
     # Check if critical secrets are missing
     if not all([PRIVATE_KEY_WIF, UTXO_STORE_KEY_WIF, PRIVATE_BANK_KEY_WIF, PRIVATE_SIGNING_KEY_WIF]):
         raise ValueError("One or more critical private keys are missing. Check your .env file.")
