@@ -15,10 +15,9 @@ from config import Config
 import wallet_manager
 import bank_functions
 import audit_core
+import key_x509_manager # Import the new module
 from bsv import PrivateKey
 from bsv.hash import sha256
-
-import key_x509_manager
 
 # Configure logging for this specific program
 logging.basicConfig(
@@ -65,40 +64,36 @@ async def log_intermediate_result_process():
     logging.info(f"\n--- Simulating New Audit Content ---")
     logging.info(f"  Content to be logged: '{intermediate_audit_content_string}'")
 
-    # --- BUILD THE OP_RETURN PAYLOAD (Hash, Sig, PubKey from content) ---
+    # --- BUILD THE ECDSA PAYLOAD (Hash, Sig, PubKey) ---
     assert Config.PRIVATE_SIGNING_KEY_WIF is not None
-    own_signing_key = Config.PRIVATE_SIGNING_KEY_WIF
-    op_return_payload_for_tx = audit_core.build_audit_payload(
+    ec_payload = audit_core.build_audit_payload(
         intermediate_audit_content_string, 
-        own_signing_key
+        Config.PRIVATE_SIGNING_KEY_WIF
     )
 
-
     # --- BUILD AND APPEND THE X.509 PAYLOAD ---
-    # Initialize the x509_payload to avoid UnboundLocalError
     x509_payload = []
     cert_info = key_x509_manager.get_x509_key_pair_by_label('test_certificate')
+    
+
     if cert_info:
-        #
         private_x509_key_pem = cert_info.get('private_key_pem')
         x509_cert_pem = cert_info.get('certificate_pem')
 
-        assert private_x509_key_pem is not None, "TODO Better log + Error treatment"
-        assert x509_cert_pem is not None, "TODO Better log + Error treatment"
-        
+        assert private_x509_key_pem is not None, "Private key PEM not found in X.509 key store."
+        assert x509_cert_pem is not None, "Certificate PEM not found in X.509 key store."
+
         x509_payload = audit_core.build_x509_audit_payload(
             intermediate_audit_content_string, 
             private_x509_key_pem, 
             x509_cert_pem
         )
-
-        # Add payload
-        op_return_payload_for_tx.extend(x509_payload)
-
-        # how to adapt payload TODO
     else:
         logging.warning("X.509 certificate with label 'test_certificate' not found. Skipping X.509 payload.")
-
+    
+    # Concatenate all payloads into a single list
+    op_return_payload_for_tx = ec_payload
+    op_return_payload_for_tx.extend(x509_payload)
 
     # Create a new audit record entry locally.
     audit_record_entry = {
@@ -108,9 +103,9 @@ async def log_intermediate_result_process():
         "blockchain_record": {
             "txid": None,
             "raw_transaction_hex": None,
-            "data_hash_pushed_to_op_return": op_return_payload_for_tx[0].hex(),
-            "signature_pushed_to_op_return": op_return_payload_for_tx[1].hex(),
-            "public_key_pushed_to_op_return": op_return_payload_for_tx[2].hex(),
+            "data_hash_pushed_to_op_return": None,
+            "signature_pushed_to_op_return": None,
+            "public_key_pushed_to_op_return": None,
             "x509_hash_pushed": None,
             "x509_signature_pushed": None,
             "x509_certificate_pushed": None,
@@ -124,11 +119,18 @@ async def log_intermediate_result_process():
         "notes": "Intermediate process result audit log entry"
     }
 
-    # --- Extend the audit record with X.509 data if available ---
+    # Populate the audit record with the ECDSA payload data
+    if ec_payload:
+        audit_record_entry["blockchain_record"]["data_hash_pushed_to_op_return"] = ec_payload[1].hex()
+        audit_record_entry["blockchain_record"]["signature_pushed_to_op_return"] = ec_payload[2].hex()
+        audit_record_entry["blockchain_record"]["public_key_pushed_to_op_return"] = ec_payload[3].hex()
+        logging.info("ECDSA payload data added to audit record.")
+    
+    # Populate the audit record with the X.509 payload data if it was created
     if x509_payload:
-        audit_record_entry["blockchain_record"]["x509_hash_pushed"] = x509_payload[0].hex()
-        audit_record_entry["blockchain_record"]["x509_signature_pushed"] = x509_payload[1].hex()
-        audit_record_entry["blockchain_record"]["x509_certificate_pushed"] = x509_payload[2].hex()
+        audit_record_entry["blockchain_record"]["x509_hash_pushed"] = x509_payload[1].hex()
+        audit_record_entry["blockchain_record"]["x509_signature_pushed"] = x509_payload[2].hex()
+        audit_record_entry["blockchain_record"]["x509_certificate_pushed"] = x509_payload[3].hex()
         logging.info("X.509 payload data added to audit record.")
     
     
@@ -190,13 +192,13 @@ async def log_intermediate_result_process():
         audit_core.save_audit_log(audit_log) 
         logging.info(f"Audit record '{audit_record_entry['log_id']}' updated with TXID {broadcast_txid} and broadcast status.")
 
-        original_hash_expected = sha256(intermediate_audit_content_string.encode('utf-8'))
-        original_public_key_hex_expected = PrivateKey(Config.PRIVATE_SIGNING_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV).public_key().hex()
-
-        verification_passed = await audit_core.verify_op_return_hash_sig_pub(
-            tx_hex_returned,
-            original_hash_expected,
-            original_public_key_hex_expected
+        # CHANGE
+        # Die alte, monolithische Verifizierungsmethode wurde durch eine neue, modulare
+        # Methode ersetzt, die die gesamte Payload-Liste verarbeitet.
+        logging.info(f"\n--- In-Code Payload Verification (pre-broadcast) ---")
+        verification_passed = audit_core.verify_payload_integrity(
+            op_return_payload_for_tx,
+            intermediate_audit_content_string
         )
         logging.info(f"\nOP_RETURN Hash/Signature/Public Key Verification (pre-confirmation): { 'PASS' if verification_passed else 'FAIL' }")
 
