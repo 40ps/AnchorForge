@@ -208,7 +208,7 @@ async def fetch_raw_transaction_hex(txid: str) -> str | None:
     print(f"  Attempting to fetch raw transaction hex from: {url}") # Debugging: Print URL
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(url, timeout=10.0)
+            response = await client.get(url, timeout=Config.ACCESS_TIMEOUT)
             response.raise_for_status()
             # print(f"  Raw TX Fetch Response (Status: {response.status_code}): {response.text[:200]}...") # Debugging: Print partial response
             return response.text
