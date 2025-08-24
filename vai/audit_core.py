@@ -12,6 +12,11 @@ from datetime import datetime, timezone
 import uuid # for generating unique identifiers
 import logging
 
+# for x509
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.backends import default_backend
 
 from config import Config
 import blockchain_api
@@ -120,6 +125,54 @@ def print_op_return_scriptpubkey(script: Script):
                 logger.info(f"  Element {i+1}: (Opcode) {hex(chunk_op_int_inner)} (Not data)")
             else:
                 logger.info(f"  Element {i+1}: (Unexpected Opcode format) {chunk_op_raw_inner}")
+
+# add this to audit_core.py
+
+def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
+    """
+    Extracts all data pushes from the FIRST OP_RETURN output in a raw transaction.
+
+    This function deserializes a raw transaction and searches for the first output
+    that contains an OP_RETURN opcode. It then extracts all subsequent data pushes
+    and returns them as a list of byte strings. It does not perform any
+    verification of the data itself.
+
+    Args:
+        raw_tx_hex (str): The raw transaction in hexadecimal string format.
+
+    Returns:
+        List[bytes]: A list of byte strings representing the data pushes in the
+                     OP_RETURN script. Returns an empty list if no OP_RETURN
+                     output is found or an error occurs.
+    """
+    logger.info("\n--- Extracting OP_RETURN Payload from Transaction ---")
+    try:
+        tx = Transaction.from_hex(raw_tx_hex)
+        if tx is None:
+            logger.error("Error: Could not deserialize transaction hex.")
+            return []
+
+        for tx_output in tx.outputs:
+            locking_script = tx_output.locking_script
+            
+            # Check for the OP_RETURN opcode (0x6a) at the beginning of the script
+            if locking_script.chunks and locking_script.chunks[0].op == 0x6a:
+                logger.info(f"Found OP_RETURN output at index {tx.outputs.index(tx_output)}.")
+                
+                # Extract all data chunks after the OP_RETURN opcode
+                # The .data attribute of the chunk contains the actual bytes pushed
+                data_pushes = [chunk.data for chunk in locking_script.chunks[1:] if chunk.data is not None]
+                
+                logger.info(f"Successfully extracted {len(data_pushes)} data pushes.")
+                return data_pushes
+                
+        logger.warning("No OP_RETURN output found in the transaction.")
+        return []
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during payload extraction: {e}")
+        return []
+
 
    
 def verify_merkle_path(txid: str, index: int, nodes: List[str], target: str) -> bool:
@@ -418,127 +471,6 @@ async def verify_op_return_hash_sig_pub_old_26_08_16(#not robust enough
 
 
 
-
-# --- Verify OP_RETURN hash, signature, and public key ---
-async def verify_op_return_hash_sig_pub_old( #TODO check the new method!
-    raw_tx_hex: str,
-    expected_hash: bytes,
-    expected_public_key_hex: str
-) -> bool: #type:ignore -> solved in the new method, but check that for semantics! 
-    """
-    Gets the OP_RETURN from raw_tx_hex, identifies the 3 arguments
-    (hash, signature, public key), and performs verification:
-    a) Compares the extracted hash with the expected_hash.
-    b) Compares the extracted public key with the expected_public_key_hex.
-    c) Verifies the signature using the extracted public key and hash.
-
-    Args:
-        raw_tx_hex (str): The raw transaction in hexadecimal string format.
-        expected_hash (bytes): The expected hash value in bytes.
-        expected_public_key_hex (str): The expected public key in hexadecimal string format.
-
-    Returns:
-        bool: True if all comparisons and signature verification pass, False otherwise.
-    """
-    logger.info("\n--- Verifying OP_RETURN Hash, Signature, and Public Key ---")
-    
-    try:
-        tx = Transaction.from_hex(raw_tx_hex)
-        if tx is None:
-            logger.error(f"ERROR: Tx is None")
-            return False
-        op_return_output_found = False
-
-        
-        for tx_output in tx.outputs: 
-            locking_script = tx_output.locking_script
-            
-
-            # Use the robust check for OP_RETURN here too
-            first_chunk_op_raw = locking_script.chunks[0].op if locking_script.chunks else None
-            first_chunk_op_int = -1
-            if isinstance(first_chunk_op_raw, bytes) and len(first_chunk_op_raw) == 1:
-                first_chunk_op_int = first_chunk_op_raw[0]
-            elif isinstance(first_chunk_op_raw, int):
-                first_chunk_op_int = first_chunk_op_raw
-
-
-            if locking_script.chunks and first_chunk_op_int == 0x6a: # Check for OP_RETURN
-                op_return_output_found = True
-                logger.info(f"Found OP_RETURN output: {locking_script.to_asm()}")
-
-                # Expecting 3 data pushes after OP_RETURN: hash, signature, public key
-                if len(locking_script.chunks) < 4: # OP_RETURN + 3 data pushes
-                    logger.warning("OP_RETURN script does not contain enough data elements (expected hash, signature, public key).")
-                    return False
-
-                # Extract the three data elements
-                # Ensure they are indeed data pushes
-                extracted_hash_bytes = locking_script.chunks[1].data
-                extracted_signature_bytes = locking_script.chunks[2].data
-                extracted_public_key_bytes = locking_script.chunks[3].data
-
-                if any(x is None for x in [extracted_hash_bytes, extracted_signature_bytes, extracted_public_key_bytes]):
-                    logger.warning("One or more expected data elements after OP_RETURN are not valid data pushes.")
-                    return False
-                
-                # convince linter
-                assert extracted_hash_bytes is not None
-                assert extracted_signature_bytes is not None
-                assert extracted_public_key_bytes is not None
-
-                # Add length checks for robustness (optional but good practice)
-                if not (
-                    len(extracted_hash_bytes) == 32 and
-                    30 <= len(extracted_signature_bytes) <= 72 and
-                    (len(extracted_public_key_bytes) == 33 or len(extracted_public_key_bytes) == 65)
-                ):
-                    logger.warning(f"Data element length mismatch detected. Hash: {len(extracted_hash_bytes)}B, Sig: {len(extracted_signature_bytes)}B, PubKey: {len(extracted_public_key_bytes)}B.")
-                    logger.warning("This may indicate incorrect data types were pushed to OP_RETURN or incorrect extraction logic.")
-                    return False
-                
-                logger.info(f"  Extracted Hash: {extracted_hash_bytes.hex()}")
-                logger.info(f"  Extracted Signature: {extracted_signature_bytes.hex()}")
-                logger.info(f"  Extracted Public Key: {extracted_public_key_bytes.hex()}")
-
-                if extracted_hash_bytes != expected_hash:
-                    logger.warning(f"  Hash comparison: FAIL (Expected: {expected_hash.hex()}, Got: {extracted_hash_bytes.hex()})")
-                    return False
-                logger.info("  Hash comparison: PASS")
-
-                # b) Compare the public key
-                if extracted_public_key_bytes.hex() != expected_public_key_hex.lower(): # Ensure lower case for comparison
-                    print(f"  Public Key comparison: FAIL (Expected: {expected_public_key_hex}, Got: {extracted_public_key_bytes.hex()})")
-                    return False
-                logger.info("  Public Key comparison: PASS")
-
-                # c) Verify the signature
-                try:
-                    # Convert bytes back to bsv-sdk objects for verification
-                    sig = extracted_signature_bytes
-                    pub_key = PublicKey(extracted_public_key_bytes)
-                    
-                    if pub_key.verify(sig, extracted_hash_bytes):
-                        logger.info("  Signature verification: PASS")
-                        return True
-                    else:
-                        logger.warning("  Signature verification: FAIL")
-                        return False
-                except Exception as sig_err:
-                    logger.error(f"  Error during signature or public key conversion/verification: {sig_err}")
-                    return False
-        
-        if not op_return_output_found:
-            logger.info("No OP_RETURN output found in the transaction.")
-            return False
-
-    except Exception as e:
-        logger.error(f"Error during OP_RETURN hash/signature/pubkey verification: {e}")
-        return False
-
-
-
-
 def build_audit_payload(
     intermediate_result_data: str, # Or Dict, or custom Object, depending on your data
     signing_key_wif: str
@@ -583,6 +515,94 @@ def build_audit_payload(
         public_signing_key_obj.serialize() # Ensure PublicKey object is converted to bytes
     ]
 
+
+def build_x509_audit_payload(
+    intermediate_result_data: str,
+    private_key_pem: str,
+    certificate_pem: str
+) -> List[bytes]:
+    """
+    Builds the OP_RETURN payload (hash, signature, x.509 certificate) for an audit record.
+
+    This function hashes the provided data, signs it with the private key from a
+    given X.509 certificate, and returns the hash, the signature, and the full certificate
+    as a list of byte strings, ready for an OP_RETURN transaction.
+
+    Args:
+        intermediate_result_data (str): The human-readable intermediate result to be logged.
+                                        This will be hashed.
+        private_key_pem (str): The private key in PEM format.
+        certificate_pem (str): The self-signed X.509 certificate in PEM format.
+
+    Returns:
+        List[bytes]: A list containing the hash (bytes), signature (bytes),
+                     and certificate (bytes) ready for OP_RETURN.
+    """
+    logger.info("\n--- Building X.509 Audit Payload ---")
+
+    try:
+        # 1. Convert input data to bytes for hashing
+        data_bytes_for_hash = intermediate_result_data.encode('utf-8')
+        audit_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
+        audit_hash.update(data_bytes_for_hash)
+        final_hash_bytes = audit_hash.finalize()
+        
+        # 2. Load the private key for signing
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode('utf-8'),
+            password=None,
+            backend=default_backend()
+        )
+
+        # Check if the key is an RSA key instance, otherwise raise a clear error
+        if not isinstance(private_key, rsa.RSAPrivateKey):
+            raise TypeError(f"Invalid private key type: expected RSA, got {type(private_key).__name__}. The sign method with PSS padding is only available for RSA keys.")
+
+        # 3. Sign the hash using the private key
+        signature = private_key.sign(
+            final_hash_bytes,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        
+        # 4. Convert certificate PEM string to bytes
+        certificate_bytes = certificate_pem.encode('utf-8')
+        
+        logger.info(f"  Data to Hash: '{intermediate_result_data}'")
+        logger.info(f"  Generated Hash: {final_hash_bytes.hex()}")
+        logger.info(f"  Signature (truncated): {signature.hex()[:20]}...")
+        
+        # 5. Verify the signature locally before returning
+        try:
+            public_key = private_key.public_key()
+            public_key.verify(
+                signature,
+                final_hash_bytes,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+            logger.info("  Initial Signature Verification (Payload Build): PASS")
+        except Exception as e:
+            logger.error(f"  Initial Signature Verification (Payload Build): FAIL - {e}")
+            # In a real-world scenario, you might want to raise an exception here.
+            # For this PoC, we will continue but log the error.
+
+        # 6. Return the payload as a list of bytes
+        return [
+            final_hash_bytes,
+            signature,
+            certificate_bytes
+        ]
+        
+    except Exception as e:
+        logger.error(f"Error building X.509 audit payload: {e}")
+        return []
 
 
 async def create_op_return_transaction(
