@@ -1,22 +1,12 @@
 # audit_core.py
 
-
 import asyncio
-
 import json
-
 from typing import List, Dict, Any, Optional
 from typing import cast
-
 from datetime import datetime, timezone
 import uuid # for generating unique identifiers
 import logging
-
-# for x509
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.hazmat.backends import default_backend
 
 from config import Config
 import blockchain_api
@@ -24,8 +14,6 @@ import blockchain_service
 from block_manager import BlockHeaderManager
 import wallet_manager
 import utils
-
-
 
 from bsv import (
     PrivateKey, PublicKey,
@@ -38,7 +26,22 @@ from bsv import (
 
 from bsv.hash import sha256 # Import sha256 function directly from bsv.hash module
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.backends import default_backend
+
 logger = logging.getLogger(__name__)
+
+# --- AUDIT MODE CONSTANTS FOR SELF-DESCRIBING PAYLOADS ---
+# These single-byte identifiers are a key component of the new, flexible
+# payload structure, allowing the verifier to know which type of signature
+# to expect for each data triplet.
+AUDIT_MODE_EC = b'E' # 'E' for Elliptic Curve Digital Signature Algorithm (ECDSA)
+AUDIT_MODE_X509 = b'X' # 'X' for X.509 Certificate
+# CHANGE
+# New constant for a generic note payload.
+AUDIT_MODE_NOTE = b'N' # 'N' for a Note or a comment.
 
 def load_audit_log() -> List[Dict]:
     """
@@ -57,7 +60,6 @@ def save_audit_log(audit_records: List[Dict]):
     """
     with open(Config.AUDIT_LOG_FILE, 'w') as f:
         json.dump(audit_records, f, indent=4)
-
 
 
 def print_op_return_scriptpubkey(script: Script):
@@ -126,54 +128,6 @@ def print_op_return_scriptpubkey(script: Script):
             else:
                 logger.info(f"  Element {i+1}: (Unexpected Opcode format) {chunk_op_raw_inner}")
 
-# add this to audit_core.py
-
-def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
-    """
-    Extracts all data pushes from the FIRST OP_RETURN output in a raw transaction.
-
-    This function deserializes a raw transaction and searches for the first output
-    that contains an OP_RETURN opcode. It then extracts all subsequent data pushes
-    and returns them as a list of byte strings. It does not perform any
-    verification of the data itself.
-
-    Args:
-        raw_tx_hex (str): The raw transaction in hexadecimal string format.
-
-    Returns:
-        List[bytes]: A list of byte strings representing the data pushes in the
-                     OP_RETURN script. Returns an empty list if no OP_RETURN
-                     output is found or an error occurs.
-    """
-    logger.info("\n--- Extracting OP_RETURN Payload from Transaction ---")
-    try:
-        tx = Transaction.from_hex(raw_tx_hex)
-        if tx is None:
-            logger.error("Error: Could not deserialize transaction hex.")
-            return []
-
-        for tx_output in tx.outputs:
-            locking_script = tx_output.locking_script
-            
-            # Check for the OP_RETURN opcode (0x6a) at the beginning of the script
-            if locking_script.chunks and locking_script.chunks[0].op == 0x6a:
-                logger.info(f"Found OP_RETURN output at index {tx.outputs.index(tx_output)}.")
-                
-                # Extract all data chunks after the OP_RETURN opcode
-                # The .data attribute of the chunk contains the actual bytes pushed
-                data_pushes = [chunk.data for chunk in locking_script.chunks[1:] if chunk.data is not None]
-                
-                logger.info(f"Successfully extracted {len(data_pushes)} data pushes.")
-                return data_pushes
-                
-        logger.warning("No OP_RETURN output found in the transaction.")
-        return []
-
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during payload extraction: {e}")
-        return []
-
-
    
 def verify_merkle_path(txid: str, index: int, nodes: List[str], target: str) -> bool:
     """
@@ -220,263 +174,15 @@ def verify_merkle_path(txid: str, index: int, nodes: List[str], target: str) -> 
         logger.error(f"Error processing hex data: {e}")
         return False
 
-   
-def verify_op_return_hash(raw_tx_hex: str, expected_hash_bytes: bytes) -> bool:
-    """
-    Deserializes a raw Bitcoin SV transaction hex, looks for OP_RETURN outputs,
-    and compares their data payload with a given hash value.
 
-    Args:
-        raw_tx_hex (str): The raw transaction in hexadecimal string format.
-        expected_hash_bytes (bytes): The expected hash value in bytes for comparison.
-
-    Returns:
-        bool: True if an OP_RETURN output is found and its data matches the expected hash,
-              False otherwise.
-    """
-    try:
-        tx = Transaction.from_hex(raw_tx_hex)
-        found_match = False
-
-        logger.info("\n--- Verifying OP_RETURN Hashes ---")
-        for i, tx_output in enumerate(tx.outputs): #type:ignore
-            locking_script = tx_output.locking_script
-            script_asm = locking_script.to_asm()
-
-            if script_asm.startswith("OP_RETURN"):
-                logger.info(f"  Found OP_RETURN in Output {i}:")
-                logger.info(f"    Full OP_RETURN Script (ASM): {script_asm}")
-
-                parts = script_asm.split(' ', 1) 
-
-                if len(parts) > 1:
-                    op_return_data_hex = parts[1]
-                    try:
-                        op_return_data_bytes = bytes.fromhex(op_return_data_hex)
-
-                        logger.info(f"    Extracted OP_RETURN Data: {op_return_data_hex}")
-                        logger.info(f"    Expected Hash Value: {expected_hash_bytes.hex()}")
-
-                        if op_return_data_bytes == expected_hash_bytes:
-                            logger.info("    Comparison: MATCH")
-                            found_match = True
-                            return True 
-                        else:
-                            logger.info("    Comparison: NO MATCH")
-                    except ValueError:
-                        logger.error(f"    Could not convert extracted data '{op_return_data_hex}' to bytes (not valid hex).")
-                else:
-                    logger.warning("    OP_RETURN found but no data payload detected (e.g., just 'OP_RETURN').")
-        
-        if not found_match:
-            logger.info("No matching OP_RETURN hash found in any output.")
-        
-        return found_match
-
-    except Exception as e:
-        logger.error(f"Error during OP_RETURN hash verification: {e}")
-        return False
-
-
-async def verify_op_return_hash_sig_pub(
-    raw_tx_hex: str,
-    expected_hash: bytes,
-    expected_public_key_hex: str
-) -> bool:
-    """
-    Gets the OP_RETURN from raw_tx_hex, identifies the 3 arguments
-    (hash, signature, public key), and performs verification.
-    """
-    logger.info("\n--- Verifying OP_RETURN Hash, Signature, and Public Key ---")
-    
-    try:
-        tx = Transaction.from_hex(raw_tx_hex)
-        if tx is None:
-            logger.error(f"ERROR: Tx is None")
-            return False
-
-        for tx_output in tx.outputs:
-            locking_script = tx_output.locking_script
-            
-            # ---  Robust check for OP_RETURN opcode to handle different data types ---
-            first_chunk_op_raw = locking_script.chunks[0].op if locking_script.chunks else None
-            is_op_return = False
-            if isinstance(first_chunk_op_raw, int):
-                if first_chunk_op_raw == 0x6a:
-                    is_op_return = True
-            elif isinstance(first_chunk_op_raw, bytes) and len(first_chunk_op_raw) == 1:
-                if first_chunk_op_raw[0] == 0x6a:
-                    is_op_return = True
-            
-            if not is_op_return:
-                continue
-
-            logger.info(f"Found OP_RETURN output: {locking_script.to_asm()}")
-
-            # (1) Check for expected number of data pushes
-            if len(locking_script.chunks) < 4:
-                logger.warning("OP_RETURN script does not contain enough data elements.")
-                return False
-
-            # (2) Extract and validate data pushes
-            extracted_hash_bytes = locking_script.chunks[1].data
-            extracted_signature_bytes = locking_script.chunks[2].data
-            extracted_public_key_bytes = locking_script.chunks[3].data
-
-            # convince linter
-            assert extracted_hash_bytes is not None
-            assert extracted_signature_bytes is not None
-            assert extracted_public_key_bytes is not None
-
-
-            if any(x is None for x in [extracted_hash_bytes, extracted_signature_bytes, extracted_public_key_bytes]):
-                logger.warning("One or more data elements are not valid data pushes.")
-                return False
-
-            # (3) Perform robust length checks
-            if not (
-                len(extracted_hash_bytes) == 32 and
-                30 <= len(extracted_signature_bytes) <= 72 and
-                (len(extracted_public_key_bytes) == 33 or len(extracted_public_key_bytes) == 65)
-            ):
-                logger.warning("Data element length mismatch detected.")
-                return False
-
-            logger.info(f"  Extracted Hash: {extracted_hash_bytes.hex()}")
-            logger.info(f"  Extracted Public Key: {extracted_public_key_bytes.hex()}")
-            
-            # (4) Compare the hash
-            if extracted_hash_bytes != expected_hash:
-                logger.warning(f"  Hash comparison: FAIL")
-                return False
-            logger.info("  Hash comparison: PASS")
-
-            # (5) Compare the public key
-            if extracted_public_key_bytes.hex() != expected_public_key_hex.lower():
-                logger.warning(f"  Public Key comparison: FAIL")
-                return False
-            logger.info("  Public Key comparison: PASS")
-
-            # (6) Verify the signature
-            try:
-                pub_key = PublicKey(extracted_public_key_bytes)
-                if pub_key.verify(extracted_signature_bytes, extracted_hash_bytes):
-                    logger.info("  Signature verification: PASS")
-                    return True # Success path, we can exit here
-                else:
-                    logger.warning("  Signature verification: FAIL")
-                    return False
-            except Exception as sig_err:
-                logger.error(f"  Error during signature verification: {sig_err}")
-                return False
-
-    except Exception as e:
-        logger.error(f"Error during OP_RETURN verification: {e}")
-        return False
-        
-    # Final return for the case where no OP_RETURN output was found after checking all outputs
-    logger.info("No OP_RETURN output found in the transaction.")
-    return False
-
-async def verify_op_return_hash_sig_pub_old_26_08_16(#not robust enough
-    raw_tx_hex: str,
-    expected_hash: bytes,
-    expected_public_key_hex: str
-) -> bool:
-    """
-    Gets the OP_RETURN from raw_tx_hex, identifies the 3 arguments
-    (hash, signature, public key), and performs verification.
-    """
-    logger.info("\n--- Verifying OP_RETURN Hash, Signature, and Public Key ---")
-    
-    try:
-        tx = Transaction.from_hex(raw_tx_hex)
-        if tx is None:
-            logger.error(f"ERROR: Tx is None")
-            return False
-
-        for tx_output in tx.outputs:
-            locking_script = tx_output.locking_script
-            
-            # Simplified check for OP_RETURN
-            if not locking_script.chunks or locking_script.chunks[0].op != 0x6a:
-                continue
-
-            logger.info(f"Found OP_RETURN output: {locking_script.to_asm()}")
-
-            # (1) Check for expected number of data pushes
-            if len(locking_script.chunks) < 4:
-                logger.warning("OP_RETURN script does not contain enough data elements.")
-                return False
-
-            # (2) Extract and validate data pushes
-            extracted_hash_bytes = locking_script.chunks[1].data
-            extracted_signature_bytes = locking_script.chunks[2].data
-            extracted_public_key_bytes = locking_script.chunks[3].data
-
-            # convince linter
-            assert extracted_hash_bytes is not None
-            assert extracted_signature_bytes is not None
-            assert extracted_public_key_bytes is not None
-
-
-            if any(x is None for x in [extracted_hash_bytes, extracted_signature_bytes, extracted_public_key_bytes]):
-                logger.warning("One or more data elements are not valid data pushes.")
-                return False
-
-            # (3) Perform robust length checks
-            if not (
-                len(extracted_hash_bytes) == 32 and
-                30 <= len(extracted_signature_bytes) <= 72 and
-                (len(extracted_public_key_bytes) == 33 or len(extracted_public_key_bytes) == 65)
-            ):
-                logger.warning("Data element length mismatch detected.")
-                return False
-
-            logger.info(f"  Extracted Hash: {extracted_hash_bytes.hex()}")
-            logger.info(f"  Extracted Public Key: {extracted_public_key_bytes.hex()}")
-            
-            # (4) Compare the hash
-            if extracted_hash_bytes != expected_hash:
-                logger.warning(f"  Hash comparison: FAIL")
-                return False
-            logger.info("  Hash comparison: PASS")
-
-            # (5) Compare the public key
-            if extracted_public_key_bytes.hex() != expected_public_key_hex.lower():
-                logger.warning(f"  Public Key comparison: FAIL")
-                return False
-            logger.info("  Public Key comparison: PASS")
-
-            # (6) Verify the signature
-            try:
-                pub_key = PublicKey(extracted_public_key_bytes)
-                if pub_key.verify(extracted_signature_bytes, extracted_hash_bytes):
-                    logger.info("  Signature verification: PASS")
-                    return True # Success path, we can exit here
-                else:
-                    logger.warning("  Signature verification: FAIL")
-                    return False
-            except Exception as sig_err:
-                logger.error(f"  Error during signature verification: {sig_err}")
-                return False
-
-    except Exception as e:
-        logger.error(f"Error during OP_RETURN verification: {e}")
-        return False
-        
-    # Final return for the case where no OP_RETURN output was found after checking all outputs
-    logger.info("No OP_RETURN output found in the transaction.")
-    return False
-
-
+# --- Builders ---
 
 def build_audit_payload(
     intermediate_result_data: str, # Or Dict, or custom Object, depending on your data
     signing_key_wif: str
 ) -> List[bytes]:
     """
-    Builds the OP_RETURN payload (hash, signature, public key) for an audit record.
+    Builds the OP_RETURN payload (mode, hash, signature, public key) for an audit record.
 
     Args:
         intermediate_result_data (str): The human-readable intermediate result to be logged.
@@ -484,7 +190,7 @@ def build_audit_payload(
         signing_key_wif (str): The WIF of the private key used to sign the hash.
 
     Returns:
-        List[bytes]: A list containing the hash (bytes), signature (bytes),
+        List[bytes]: A list containing the mode (bytes), hash (bytes), signature (bytes),
                      and public key (bytes) ready for OP_RETURN.
     """
     # Convert input data to bytes for hashing
@@ -496,25 +202,25 @@ def build_audit_payload(
     public_signing_key_obj = private_signing_key_obj.public_key()
     audit_signature = private_signing_key_obj.sign(audit_hash)
 
-    print(f"\n--- Building Audit Payload ---")
-    print(f"  Data to Hash: '{intermediate_result_data}'")
-    print(f"  Generated Hash: {audit_hash.hex()}")
-    print(f"  Signing Public Key: {public_signing_key_obj.hex()}")
-    print(f"  Generated Signature: {audit_signature.hex()}")
+    logger.info(f"\n--- Building Audit Payload (ECDSA) ---")
+    logger.info(f"  Data to Hash: '{intermediate_result_data}'")
+    logger.info(f"  Generated Hash: {audit_hash.hex()}")
+    logger.info(f"  Signing Public Key: {public_signing_key_obj.hex()}")
+    logger.info(f"  Generated Signature: {audit_signature.hex()}")
 
     if public_signing_key_obj.verify(audit_signature, audit_hash):
-        print("  Initial Signature Verification (Payload Build): PASS")
+        logger.info("  Initial Signature Verification (Payload Build): PASS")
     else:
-        print("  Initial Signature Verification (Payload Build): FAIL")
+        logger.error("  Initial Signature Verification (Payload Build): FAIL")
         # You might want to raise an error here if verification fails
 
-    # Return the payload as a list of bytes
+    # Return the payload as a list of bytes, prepending the mode byte
     return [
+        AUDIT_MODE_EC,
         audit_hash,
         audit_signature, # Ensure Signature object is converted to bytes
         public_signing_key_obj.serialize() # Ensure PublicKey object is converted to bytes
     ]
-
 
 def build_x509_audit_payload(
     intermediate_result_data: str,
@@ -522,7 +228,7 @@ def build_x509_audit_payload(
     certificate_pem: str
 ) -> List[bytes]:
     """
-    Builds the OP_RETURN payload (hash, signature, x.509 certificate) for an audit record.
+    Builds the OP_RETURN payload (mode, hash, signature, x.509 certificate) for an audit record.
 
     This function hashes the provided data, signs it with the private key from a
     given X.509 certificate, and returns the hash, the signature, and the full certificate
@@ -535,10 +241,10 @@ def build_x509_audit_payload(
         certificate_pem (str): The self-signed X.509 certificate in PEM format.
 
     Returns:
-        List[bytes]: A list containing the hash (bytes), signature (bytes),
+        List[bytes]: A list containing the mode (bytes), hash (bytes), signature (bytes),
                      and certificate (bytes) ready for OP_RETURN.
     """
-    logger.info("\n--- Building X.509 Audit Payload ---")
+    logger.info("\n--- Building Audit Payload (X.509) ---")
 
     try:
         # 1. Convert input data to bytes for hashing
@@ -553,8 +259,8 @@ def build_x509_audit_payload(
             password=None,
             backend=default_backend()
         )
-
-        # Check if the key is an RSA key instance, otherwise raise a clear error
+        
+        # Check if the key is an RSA key instance
         if not isinstance(private_key, rsa.RSAPrivateKey):
             raise TypeError(f"Invalid private key type: expected RSA, got {type(private_key).__name__}. The sign method with PSS padding is only available for RSA keys.")
 
@@ -590,11 +296,10 @@ def build_x509_audit_payload(
             logger.info("  Initial Signature Verification (Payload Build): PASS")
         except Exception as e:
             logger.error(f"  Initial Signature Verification (Payload Build): FAIL - {e}")
-            # In a real-world scenario, you might want to raise an exception here.
-            # For this PoC, we will continue but log the error.
 
-        # 6. Return the payload as a list of bytes
+        # 6. Return the payload as a list of bytes, prepending the mode byte
         return [
+            AUDIT_MODE_X509,
             final_hash_bytes,
             signature,
             certificate_bytes
@@ -604,7 +309,151 @@ def build_x509_audit_payload(
         logger.error(f"Error building X.509 audit payload: {e}")
         return []
 
+def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
+    """
+    Extracts all data pushes from the first OP_RETURN output in a raw transaction.
 
+    This function deserializes a raw transaction and searches for the first output
+    that contains an OP_RETURN opcode. It then extracts all subsequent data pushes
+    and returns them as a list of byte strings. It does not perform any
+    verification of the data itself.
+
+    Args:
+        raw_tx_hex (str): The raw transaction in hexadecimal string format.
+
+    Returns:
+        List[bytes]: A list of byte strings representing the data pushes in the
+                     OP_RETURN script. Returns an empty list if no OP_RETURN
+                     output is found or an error occurs.
+    """
+    logger.info("\n--- Extracting OP_RETURN Payload from Transaction ---")
+    try:
+        tx = Transaction.from_hex(raw_tx_hex)
+        if tx is None:
+            logger.error("Error: Could not deserialize transaction hex.")
+            return []
+
+        for tx_output in tx.outputs:
+            locking_script = tx_output.locking_script
+            
+            # Check for the OP_RETURN opcode (0x6a) at the beginning of the script
+            if locking_script.chunks and locking_script.chunks[0].op == 0x6a:
+                logger.info(f"Found OP_RETURN output at index {tx.outputs.index(tx_output)}.")
+                
+                # Extract all data chunks after the OP_RETURN opcode
+                # The .data attribute of the chunk contains the actual bytes pushed
+                data_pushes = [chunk.data for chunk in locking_script.chunks[1:] if chunk.data is not None]
+                
+                logger.info(f"Successfully extracted {len(data_pushes)} data pushes.")
+                return data_pushes
+                
+        logger.warning("No OP_RETURN output found in the transaction.")
+        return []
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during payload extraction: {e}")
+        return []
+
+def verify_ec_payload(payload: List[bytes], original_content: str) -> bool:
+    """
+    Verifies a single ECDSA audit payload triplet.
+
+    Args:
+        payload (List[bytes]): The list of byte strings representing the payload (mode, hash, signature, public key).
+        original_content (str): The original content string that was hashed and signed.
+
+    Returns:
+        bool: True if the verification passes, False otherwise.
+    """
+    logger.info("  --- Verifying ECDSA Payload ---")
+    if len(payload) != 4 or payload[0] != AUDIT_MODE_EC:
+        logger.error("  Invalid ECDSA payload format or missing mode byte.")
+        return False
+    
+    # Extract data from the payload (skipping the mode byte)
+    extracted_hash_bytes, extracted_signature_bytes, extracted_public_key_bytes = payload[1:]
+
+    # 1. Compare the hash
+    computed_original_hash = sha256(original_content.encode('utf-8'))
+    if computed_original_hash != extracted_hash_bytes:
+        logger.error(f"  Hash comparison: FAIL (Expected: {computed_original_hash.hex()}, Got: {extracted_hash_bytes.hex()})")
+        return False
+    logger.info("  Hash comparison: PASS")
+    
+    # 2. Verify the signature
+    try:
+        pub_key = PublicKey(extracted_public_key_bytes)
+        if pub_key.verify(extracted_signature_bytes, extracted_hash_bytes):
+            logger.info("  Signature verification: PASS")
+            return True
+        else:
+            logger.error("  Signature verification: FAIL")
+            return False
+    except Exception as e:
+        logger.error(f"  Error during signature verification: {e}")
+        return False
+
+
+def verify_x509_payload(payload: List[bytes], original_content: str) -> bool:
+    """
+    Verifies a single X.509 audit payload triplet.
+
+    Args:
+        payload (List[bytes]): The list of byte strings representing the payload (mode, hash, signature, certificate).
+        original_content (str): The original content string that was hashed and signed.
+
+    Returns:
+        bool: True if the verification passes, False otherwise.
+    """
+    logger.info("  --- Verifying X.509 Payload ---")
+    if len(payload) != 4 or payload[0] != AUDIT_MODE_X509:
+        logger.error("  Invalid X.509 payload format or missing mode byte.")
+        return False
+
+    # Extract data from the payload (skipping the mode byte)
+    extracted_hash_bytes, extracted_signature_bytes, extracted_certificate_bytes = payload[1:]
+
+    # 1. Compare the hash
+    computed_original_hash = sha256(original_content.encode('utf-8'))
+    if computed_original_hash != extracted_hash_bytes:
+        logger.error(f"  Hash comparison: FAIL (Expected: {computed_original_hash.hex()}, Got: {extracted_hash_bytes.hex()})")
+        return False
+    logger.info("  Hash comparison: PASS")
+
+    # 2. Load the certificate and extract the public key
+    public_key = None # Initialize public_key to None
+    try:
+        cert = x509.load_pem_x509_certificate(extracted_certificate_bytes, default_backend())
+        public_key = cert.public_key()
+        
+        # Check if the extracted public key is an RSA key
+        if not isinstance(public_key, rsa.RSAPublicKey):
+            logger.error(f"  Invalid public key type for X.509 verification: expected RSA, got {type(public_key).__name__}")
+            return False
+        
+        logger.info("  Certificate loaded and RSA public key extracted.")
+    except Exception as e:
+        logger.error(f"  Error loading X.509 certificate: {e}")
+        return False # The verification fails if the certificate cannot be loaded
+
+    # 3. Verify the signature
+    try:
+        public_key.verify(
+            extracted_signature_bytes,
+            extracted_hash_bytes,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        logger.info("  Signature verification: PASS")
+        return True
+    except Exception as e:
+        logger.error(f"  Signature verification: FAIL - {e}")
+        return False
+
+    
 async def create_op_return_transaction(
         spending_key_wif: str,
         recipient_address: str, 
@@ -704,9 +553,11 @@ async def create_op_return_transaction(
     if op_return_data_pushes:
         for data_bytes in op_return_data_pushes:
             op_return_script_parts.append(data_bytes.hex())
-
+    # CHANGE
+    # This block now adds the note with a mode byte, following the new flexible payload structure.
     if note:
         note_bytes = note.encode('utf-8')
+        op_return_script_parts.append(AUDIT_MODE_NOTE.hex())
         op_return_script_parts.append(note_bytes.hex())
 
     op_return_script_asm = " ".join(op_return_script_parts) 
@@ -833,7 +684,7 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
         # or "pending_creation" (if we want the monitor to also attempt to broadcast, though currently
         # create_op_return_transaction handles initial broadcast).
         records_to_monitor = [
-            record for record in audit_log 
+            record for record in audit_log
             if record.get("blockchain_record") and 
                record["blockchain_record"].get("status") in ["broadcasted", "broadcast_failed", "pending_creation"]
         ]
@@ -906,6 +757,11 @@ async def audit_record_verifier(log_id: str) -> bool:
     """
     Simulates an auditor's tool to verify a specific audit record's integrity and blockchain inclusion.
 
+    This function first verifies the integrity of the raw transaction and then
+    iterates through all data payloads within the OP_RETURN script to perform
+    a self-contained verification for each one. Finally, it confirms the transaction's
+    inclusion in the blockchain via an SPV proof.
+
     Args:
         log_id (str): The unique identifier of the audit record to verify.
 
@@ -913,141 +769,211 @@ async def audit_record_verifier(log_id: str) -> bool:
         bool: True if all verification steps pass, False otherwise.
     """
     logger.info(f"\n### AUDITOR VERIFICATION FOR LOG ID: {log_id} ###")
-    overall_success = True
-
+    
     audit_log = load_audit_log()
-
-    dynamic_header_file_path = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
-    header_manager = BlockHeaderManager(dynamic_header_file_path)
-    local_block_headers = header_manager.headers
-
+    
     record = next((r for r in audit_log if r.get("log_id") == log_id), None)
-
     if not record:
         logger.error(f"Audit record with ID '{log_id}' not found in {Config.AUDIT_LOG_FILE}.")
         return False
-
+    
     blockchain_rec = record.get("blockchain_record", {})
 
     # --- Step 1: Check if the record is confirmed on blockchain ---
     if blockchain_rec.get("status") != "confirmed":
         logger.warning(f"  Record '{log_id}' is not confirmed on blockchain (Status: {blockchain_rec.get('status')}). Cannot perform full on-chain verification.")
-        logger.warning(f"  Status Check: FAIL (Not confirmed)")
         return False
     logger.info(f"  Status Check: PASS (Confirmed)")
 
-    # Extract necessary data for verification
+    # Extract necessary data for verification from the local record
     original_content = record.get("original_audit_content")
     txid = blockchain_rec.get("txid")
     raw_transaction_hex = blockchain_rec.get("raw_transaction_hex")
-    data_hash_pushed = bytes.fromhex(blockchain_rec.get("data_hash_pushed_to_op_return", ""))
-    signature_pushed = bytes.fromhex(blockchain_rec.get("signature_pushed_to_op_return", ""))
-    public_key_pushed_hex = blockchain_rec.get("public_key_pushed_to_op_return", "")
-    block_hash = blockchain_rec.get("block_hash")
-    block_height = blockchain_rec.get("block_height")
-    merkle_proof_data = blockchain_rec.get("merkle_proof_data")
-
-    if not all([original_content, txid, raw_transaction_hex, data_hash_pushed, signature_pushed, public_key_pushed_hex, block_hash, merkle_proof_data]):
+    
+    # Check for missing data
+    if not all([original_content, txid, raw_transaction_hex]):
         logger.error(f"  Missing essential data in audit record '{log_id}' for verification. Cannot proceed.")
-        logger.error(f"  Data Integrity Check (Local Record): FAIL (Missing data)")
         return False
-    logger.info(f"  Local Record Data Check: PASS (All essential data present)")
 
+    # Initialize a flag to track the overall success of the verification
+    overall_success = True
 
-    # --- Step 2a: Verify consistency between stored TXID and stored Raw Transaction ---
-    logger.info("\n  --- Verifying Local Transaction Consistency (TXID vs. RawTX Hash) ---")
+    # --- Step 2: Verify consistency between stored TXID and stored Raw Transaction ---
+    logger.info("\n  --- Verifying Local Transaction Consistency (Stored TXID vs. Computed TXID from RawTX) ---")
     try:
+        # Check if the raw transaction is not None before attempting to deserialize
+        if not raw_transaction_hex:
+            logger.error("  Local TX Consistency Check: FAIL. raw_transaction_hex is empty or None.")
+            return False
+            
         tx_obj_from_raw = Transaction.from_hex(raw_transaction_hex)
-        computed_txid_from_raw = tx_obj_from_raw.txid() #type:ignore
+        # Check if deserialization was successful
+        if tx_obj_from_raw is None:
+            logger.error("  Local TX Consistency Check: FAIL. Failed to deserialize raw_transaction_hex.")
+            return False
+
+        computed_txid_from_raw = tx_obj_from_raw.txid()
         if computed_txid_from_raw != txid:
-            logger.error(f"  Local TX Consistency Check: FAIL. Computed TXID '{computed_txid_from_raw}' from raw_transaction_hex does NOT match stored TXID '{txid}'. Raw transaction may be tampered or invalid.")
-            logger.error(f"  Local TX Consistency Check: FAIL (RawTX Mismatch)")
-            overall_success = False
-            return overall_success
+            logger.error(f"  Local TX Consistency Check: FAIL. Computed TXID '{computed_txid_from_raw}' from raw_transaction_hex does NOT match stored TXID '{txid}'.")
+            return False
         else:
             logger.info(f"  Local TX Consistency Check: PASS. Raw transaction hex matches stored TXID.")
     except Exception as e:
         logger.error(f"  Local TX Consistency Check: FAIL. Error parsing raw_transaction_hex: {e}", exc_info=True)
-        logger.error(f"  Local TX Consistency Check: FAIL (RawTX Parsing Error)")
-        overall_success = False
-        return overall_success
+        return False
 
+    # --- Step 3: Check for internal consistency of the locally stored hashes ---
+    # This is an important step to ensure that the hashes in the audit record
+    # were correctly generated from the original content, before we compare
+    # them with the data on the blockchain.
+    logger.info("\n  --- Verifying Local Hash Consistency (Original Content vs. Stored Hashes) ---")
+    local_hashes_verified = True
+    
+    if not original_content:
+        logger.error("  Local Hash Consistency Check: FAIL. Original content is empty or None.")
+        return False
 
-    # --- Step 3: Verify Data Integrity (Off-Chain) ---
-    logger.info("\n  --- Verifying Data Integrity (Original Content vs. Hashed) ---")
-    computed_original_hash = sha256(original_content.encode('utf-8')) #type:ignore
-    if computed_original_hash != data_hash_pushed:
-        logger.error(f"  Data Integrity Check: FAIL. Computed hash '{computed_original_hash.hex()}' does NOT match pushed hash '{data_hash_pushed.hex()}'. Original content may be tampered.")
-        logger.error(f"  Data Integrity Check: FAIL (Content Tampered)")
+    computed_original_hash = sha256(original_content.encode('utf-8'))
+    
+    # Check EC hash consistency
+    ec_hash_pushed_hex = blockchain_rec.get("data_hash_pushed_to_op_return")
+    if ec_hash_pushed_hex:
+        stored_ec_hash = bytes.fromhex(ec_hash_pushed_hex)
+        if computed_original_hash != stored_ec_hash:
+            logger.error(f"  EC Hash Mismatch: FAIL. Computed hash '{computed_original_hash.hex()}' does NOT match stored hash '{stored_ec_hash.hex()}'.")
+            local_hashes_verified = False
+        else:
+            logger.info("  EC Hash Mismatch: PASS.")
+            
+    # Check X.509 hash consistency (if available)
+    x509_hash_pushed_hex = blockchain_rec.get("x509_hash_pushed")
+    if x509_hash_pushed_hex:
+        stored_x509_hash = bytes.fromhex(x509_hash_pushed_hex)
+        if computed_original_hash != stored_x509_hash:
+            logger.error(f"  X.509 Hash Mismatch: FAIL. Computed hash '{computed_original_hash.hex()}' does NOT match stored hash '{stored_x509_hash.hex()}'.")
+            local_hashes_verified = False
+        else:
+            logger.info("  X.509 Hash Mismatch: PASS.")
+    
+    if not local_hashes_verified:
+        logger.error("  Local Hash Consistency Check: FAIL.")
         overall_success = False
     else:
-        logger.info(f"  Data Integrity Check: PASS. Original content hash matches pushed hash.")
+        logger.info("  Local Hash Consistency Check: PASS.")
 
+    # --- Step 4: Extract and Verify ALL Payload Data from Raw Transaction ---
+    logger.info("\n  --- Verifying Payload Data from Raw Transaction ---")
+    all_data_pushes = extract_op_return_payload(raw_transaction_hex)
 
-    # --- Step 4: Verify Data Authenticity (Signature Check) ---
-    logger.info("\n  --- Verifying Data Authenticity (Signature Check) ---")
-    verification_passed = await verify_op_return_hash_sig_pub(
-        raw_transaction_hex, # Use the stored raw transaction hex
-        data_hash_pushed,    # Use the hash pushed to OP_RETURN
-        public_key_pushed_hex # Use the public key pushed to OP_RETURN
-    )
-    if not verification_passed:
-        logger.error(f"  Data Authenticity Check: FAIL. Signature verification failed for record '{log_id}'.")
-        logger.error(f"  Data Authenticity Check: FAIL (Signature Invalid)")
+    if not all_data_pushes:
+        logger.error("  Payload Verification: FAIL. No OP_RETURN data found in the transaction.")
         overall_success = False
     else:
-        logger.info(f"  Data Authenticity Check: PASS. Signature is valid.")
+        # Initialize a flag to track the overall success of the payload verification
+        payload_verification_overall_success = True
+        current_index = 0
+        
+        while current_index < len(all_data_pushes):
+            mode_byte = all_data_pushes[current_index]
+            
+            # Check for a "note" payload, which only has one data push
+            if mode_byte == AUDIT_MODE_NOTE:
+                if len(all_data_pushes) < current_index + 2:
+                    logger.error("  Note Payload Verification: FAIL. Incomplete note payload found.")
+                    payload_verification_overall_success = False
+                    break
+                
+                note_bytes = all_data_pushes[current_index + 1]
+                try:
+                    decoded_note = note_bytes.decode('utf-8')
+                    logger.info(f"  Note found and verified: '{decoded_note}'")
+                except UnicodeDecodeError:
+                    logger.error("  Note Payload Verification: FAIL. Could not decode note as UTF-8.")
+                    payload_verification_overall_success = False
+                
+                # Move the index forward by 2 (mode byte + note data)
+                current_index += 2
+                continue # Continue to the next item in the while loop
+            
+            # If it's not a note, check for a full payload triplet
+            if len(all_data_pushes) < current_index + 4:
+                logger.error("  Payload Verification: FAIL. Incomplete payload triplet found.")
+                payload_verification_overall_success = False
+                break
 
+            payload_triplet = all_data_pushes[current_index : current_index + 4]
+
+            if mode_byte == AUDIT_MODE_EC:
+                if not verify_ec_payload(payload_triplet, original_content):
+                    payload_verification_overall_success = False
+            elif mode_byte == AUDIT_MODE_X509:
+                if not verify_x509_payload(payload_triplet, original_content):
+                    payload_verification_overall_success = False
+            else:
+                logger.error(f"  Payload Verification: FAIL. Unknown mode byte found: {mode_byte}.")
+                payload_verification_overall_success = False
+                break
+            
+            current_index += 4
+        
+        if not payload_verification_overall_success:
+            logger.error("  Payload Verification: OVERALL FAIL.")
+            overall_success = False
+        else:
+            logger.info("  Payload Verification: OVERALL PASS.")
 
     # --- Step 5: Verify Blockchain Inclusion (SPV Proof) ---
     logger.info("\n  --- Verifying Blockchain Inclusion (SPV Proof) ---")
+
+    block_hash = blockchain_rec.get("block_hash")
+    block_height = blockchain_rec.get("block_height")
+    merkle_proof_data = blockchain_rec.get("merkle_proof_data")
+
+    if not all([block_hash, merkle_proof_data]):
+        logger.error(f"  SPV Proof: FAIL. Missing essential data for SPV proof in audit record '{log_id}'.")
+        overall_success = False
+    else:
+        header_manager = BlockHeaderManager(f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json")
+        local_block_headers = header_manager.headers
+        
+        live_block_header = None
+        if block_hash in local_block_headers:
+            live_block_header = local_block_headers[block_hash]
+            logger.info(f"  Block Header for '{block_hash}' (height {block_height}) found in local cache. Using cached data.")
+        else:
+            logger.info(f"  Block Header for '{block_hash}' (height {block_height}) NOT found in local cache. Fetching LIVE from network.")
+            live_block_header = await blockchain_api.get_block_header(block_hash)
+            if live_block_header:
+                header_manager.headers[block_hash] = live_block_header
+                header_manager.save()
+                logger.info(f"  Live Block Header for '{block_hash}' (height {block_height}) fetched and cached.")
+            else:
+                logger.error(f"  SPV Proof: FAIL. Could not fetch live block header for block '{block_hash}'.")
+                overall_success = False
+
+        if not utils.verify_block_hash(live_block_header):
+            logger.error(f"  SPV Proof: FAIL. Live block hash verification failed for block '{block_hash}'. Block header may be invalid.")
+            overall_success = False
+        else:
+            logger.info(f"  Live Block Header Check: PASS. Block hash is valid.")
+
+        merkle_root_from_header = live_block_header.get("merkleroot")
+        if not merkle_root_from_header:
+            logger.error(f"  SPV Proof: FAIL. Merkle root not found in live block header for block '{block_hash}'.")
+            overall_success = False
+        else:
+            merkle_proof_verified = verify_merkle_path(
+                txid, 
+                merkle_proof_data.get("index", 0), 
+                merkle_proof_data.get("nodes", []), 
+                merkle_root_from_header 
+            )
+            if not merkle_proof_verified:
+                logger.error(f"  SPV Proof: FAIL. Merkle path verification failed for TXID '{txid}'.")
+                overall_success = False
+            else:
+                logger.info(f"  SPV Proof: PASS. Transaction is verifiably included in block '{block_hash}'.")
     
-    # 5.1 Fetch Block Header (FIRST from cache, THEN live)
-    live_block_header = None
-    if block_hash in local_block_headers:
-        live_block_header = local_block_headers[block_hash]
-        logger.info(f"  Block Header for '{block_hash}' (height {block_height}) found in local cache. Using cached data.")
-    else:
-        logger.info(f"  Block Header for '{block_hash}' (height {block_height}) NOT found in local cache. Fetching LIVE from network.")
-        live_block_header = await blockchain_api.get_block_header(block_hash)
-        if live_block_header:
-            header_manager.headers[block_hash] = live_block_header
-            header_manager.save()
-            logger.info(f"  Live Block Header for '{block_hash}' (height {block_height}) fetched and cached.")
-        else:
-            logger.error(f"  SPV Proof: FAIL. Could not fetch live block header for block '{block_hash}'.")
-            logger.error(f"  SPV Proof: FAIL (Block Header Unavailable)")
-            overall_success = False
-            return overall_success 
-
-    # 5.2 Verify the live Block Hash itself (self-consistency check)
-    if not utils.verify_block_hash(live_block_header):
-        logger.error(f"  SPV Proof: FAIL. Live block hash verification failed for block '{block_hash}'. Block header may be invalid.")
-        logger.error(f"  SPV Proof: FAIL (Block Header Invalid)")
-        overall_success = False
-    else:
-        logger.info(f"  Live Block Header Check: PASS. Block hash is valid.")
-
-    # 5.3 Verify Merkle Path against live Block Header's Merkle Root
-    merkle_root_from_header = live_block_header.get("merkleroot")
-    if not merkle_root_from_header:
-        logger.error(f"  SPV Proof: FAIL. Merkle root not found in live block header for block '{block_hash}'.")
-        logger.error(f"  SPV Proof: FAIL (Merkle Root Missing)")
-        overall_success = False
-    else:
-        merkle_proof_verified = verify_merkle_path(
-            txid, 
-            merkle_proof_data.get("index", 0), 
-            merkle_proof_data.get("nodes", []), 
-            merkle_root_from_header 
-        )
-        if not merkle_proof_verified:
-            logger.error(f"  SPV Proof: FAIL. Merkle path verification failed for TXID '{txid}'.")
-            logger.error(f"  SPV Proof: FAIL (Merkle Path Invalid)")
-            overall_success = False
-        else:
-            logger.info(f"  SPV Proof: PASS. Transaction is verifiably included in block '{block_hash}'.")
-
     logger.info(f"\n### AUDITOR VERIFICATION FOR LOG ID: {log_id} COMPLETE: { 'PASS' if overall_success else 'FAIL' } ###")
     return overall_success  
 
@@ -1096,4 +1022,5 @@ async def audit_all_records():
     logger.info(f"Total Confirmed Records Audited: {total_audited}")
     logger.info(f"Passed Audits: {passed_audits}")
     logger.info(f"Failed Audits: {failed_audits}")
-    logger.info(f"Overall Batch Audit Result: { 'PASS' if failed_audits == 0 else 'FAIL' }")
+    overall_result = 'PASS' if failed_audits == 0 else 'FAIL'
+    logger.info(f"Overall Batch Audit Result: { overall_result }")
