@@ -309,6 +309,80 @@ def build_x509_audit_payload(
         logger.error(f"Error building X.509 audit payload: {e}")
         return []
 
+def verify_payload_integrity(payload_pushes: List[bytes], original_content: str) -> bool:
+    """
+    Verifies the integrity of a series of payloads by iterating through them
+    and delegating verification to the appropriate specialized functions.
+
+    This function acts as a central dispatcher for the in-code verification
+    before a transaction is broadcasted. It is a robust replacement for the
+    legacy, monolithic verification function.
+
+    Args:
+        payload_pushes (List[bytes]): The list of byte strings representing all
+                                     data pushes in the OP_RETURN script.
+        original_content (str): The original content string that was hashed and signed.
+
+    Returns:
+        bool: True if all payloads are valid, False otherwise.
+    """
+    logger.info("\n  --- Verifying Payload Integrity (In-Code Dispatcher) ---")
+    current_index = 0
+    payloads_ok = True
+    
+    while current_index < len(payload_pushes):
+        mode_byte = payload_pushes[current_index]
+
+        if mode_byte == AUDIT_MODE_EC:
+            if len(payload_pushes) < current_index + 4:
+                logger.error("  Payload Integrity Check: FAIL. Incomplete ECDSA payload found.")
+                payloads_ok = False
+                break
+            payload_triplet = payload_pushes[current_index : current_index + 4]
+            if not verify_ec_payload(payload_triplet, original_content):
+                payloads_ok = False
+            current_index += 4
+        
+        elif mode_byte == AUDIT_MODE_X509:
+            if len(payload_pushes) < current_index + 4:
+                logger.error("  Payload Integrity Check: FAIL. Incomplete X.509 payload found.")
+                payloads_ok = False
+                break
+            payload_triplet = payload_pushes[current_index : current_index + 4]
+            if not verify_x509_payload(payload_triplet, original_content):
+                payloads_ok = False
+            current_index += 4
+        
+        elif mode_byte == AUDIT_MODE_NOTE:
+            if len(payload_pushes) < current_index + 2:
+                logger.error("  Payload Integrity Check: FAIL. Incomplete note payload found.")
+                payloads_ok = False
+                break
+            note_payload = payload_pushes[current_index : current_index + 2]
+            try:
+                # We can't verify the note itself, just that it's a valid string.
+                decoded_note = note_payload[1].decode('utf-8')
+                logger.info(f"  Note found and verified (format only): '{decoded_note}'")
+            except UnicodeDecodeError:
+                logger.error("  Payload Integrity Check: FAIL. Could not decode note as UTF-8.")
+                payloads_ok = False
+            current_index += 2
+
+        else:
+            logger.error(f"  Payload Integrity Check: FAIL. Unknown mode byte found: {mode_byte}.")
+            payloads_ok = False
+            break
+            
+    if not payloads_ok:
+        logger.error("  Payload Integrity Check: OVERALL FAIL.")
+        return False
+    
+    logger.info("  Payload Integrity Check: OVERALL PASS.")
+    return True
+
+
+
+
 def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
     """
     Extracts all data pushes from the first OP_RETURN output in a raw transaction.
