@@ -34,6 +34,7 @@ async def log_intermediate_result_process():
     Orchestrates the process of creating and broadcasting an audit record.
     This function uses dynamic file paths for the local stores.
     """
+    logging.info(f"\n--- Enter log Intermediate_result_process ---")
     priv_key_funding = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = priv_key_funding.address()
 
