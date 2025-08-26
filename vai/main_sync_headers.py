@@ -39,7 +39,7 @@ async def main_sync_headers():
             current_latest_chain_height = chain_info["blocks"]
 
             # Sync the last x blocks as a configurable default
-            sync_start_height = max(0, current_latest_chain_height - 10)
+            sync_start_height = max(0, current_latest_chain_height - 2)
             await blockchain_service.sync_block_headers(
                 header_manager,
                 start_height=sync_start_height,
