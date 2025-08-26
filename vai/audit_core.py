@@ -19,7 +19,9 @@ from bsv import (
     PrivateKey, PublicKey,
     P2PKH, 
     Transaction, TransactionInput, TransactionOutput, 
-    Network, Script, SatoshisPerKilobyte, 
+    Network, 
+    Script, 
+    SatoshisPerKilobyte, 
     UnlockingScriptTemplate,
     hash256
 )
@@ -380,10 +382,7 @@ def verify_payload_integrity(payload_pushes: List[bytes], original_content: str)
     logger.info("  Payload Integrity Check: OVERALL PASS.")
     return True
 
-
-
-
-def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
+def extract_op_return_payload_false_25_08_26(raw_tx_hex: str) -> List[bytes]:
     """
     Extracts all data pushes from the first OP_RETURN output in a raw transaction.
 
@@ -410,15 +409,18 @@ def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
         for tx_output in tx.outputs:
             locking_script = tx_output.locking_script
             
+            # CHANGE: Log the script hex to debug parsing issues.
+            logger.info(f"  Checking output script (hex): {locking_script.hex()}")
+
             # Check for the OP_RETURN opcode (0x6a) at the beginning of the script
             if locking_script.chunks and locking_script.chunks[0].op == 0x6a:
-                logger.info(f"Found OP_RETURN output at index {tx.outputs.index(tx_output)}.")
+                logger.info(f"  Found OP_RETURN output at index {tx.outputs.index(tx_output)}.")
                 
                 # Extract all data chunks after the OP_RETURN opcode
                 # The .data attribute of the chunk contains the actual bytes pushed
                 data_pushes = [chunk.data for chunk in locking_script.chunks[1:] if chunk.data is not None]
                 
-                logger.info(f"Successfully extracted {len(data_pushes)} data pushes.")
+                logger.info(f"  Successfully extracted {len(data_pushes)} data pushes.")
                 return data_pushes
                 
         logger.warning("No OP_RETURN output found in the transaction.")
@@ -427,6 +429,89 @@ def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
     except Exception as e:
         logger.error(f"An unexpected error occurred during payload extraction: {e}")
         return []
+
+
+
+def extract_op_return_payload_correct_25_08_25(raw_tx_hex: str) -> List[bytes]:
+    """
+    Extracts all data pushes from the first OP_RETURN output in a raw transaction.
+    This corrected version manually parses the script bytes to correctly handle
+    all OP_PUSHDATA opcodes, fixing the bug in older bsv-sdk versions.
+
+    Args:
+        raw_tx_hex (str): The raw transaction in hexadecimal string format.
+
+    Returns:
+        List[bytes]: A list of byte strings representing the data pushes in the
+                     OP_RETURN script. Returns an empty list if no OP_RETURN
+                     output is found or an error occurs.
+    """
+    logger.info("\n--- SIMULATION: Extracting OP_RETURN Payload from Transaction ---")
+    try:
+        tx = Transaction.from_hex(raw_tx_hex)
+        if tx is None:
+            logger.error("Error: Could not deserialize transaction hex.")
+            return []
+
+        for tx_output in tx.outputs:
+            locking_script = tx_output.locking_script
+            script_bytes = bytes.fromhex(locking_script.hex())
+
+            if not script_bytes.startswith(bytes.fromhex("6a")): # OP_RETURN (0x6a)
+                continue
+
+            logger.info(f"  Found OP_RETURN output at index {tx.outputs.index(tx_output)}.")
+            
+            data_pushes = []
+            current_index = 1 # Start nach dem OP_RETURN-Opcode (0x6a)
+
+            while current_index < len(script_bytes):
+                # Lesen des Längen-Bytes (oder Opcode)
+                length_or_opcode = script_bytes[current_index]
+                current_index += 1
+
+                if 0x01 <= length_or_opcode <= 0x4b:
+                    # Direkte Daten-Push (OP_1 bis OP_75)
+                    data_length = length_or_opcode
+                    data_push_end = current_index + data_length
+                    data_pushes.append(script_bytes[current_index:data_push_end])
+                    current_index = data_push_end
+                elif length_or_opcode == 0x4c: # OP_PUSHDATA1
+                    data_length = script_bytes[current_index]
+                    current_index += 1
+                    data_push_end = current_index + data_length
+                    data_pushes.append(script_bytes[current_index:data_push_end])
+                    current_index = data_push_end
+                elif length_or_opcode == 0x4d: # OP_PUSHDATA2
+                    data_length_bytes = script_bytes[current_index:current_index + 2]
+                    data_length = int.from_bytes(data_length_bytes, byteorder='little')
+                    current_index += 2
+                    data_push_end = current_index + data_length
+                    data_pushes.append(script_bytes[current_index:data_push_end])
+                    current_index = data_push_end
+                elif length_or_opcode == 0x4e: # OP_PUSHDATA4
+                    data_length_bytes = script_bytes[current_index:current_index + 4]
+                    data_length = int.from_bytes(data_length_bytes, byteorder='little')
+                    current_index += 4
+                    data_push_end = current_index + data_length
+                    data_pushes.append(script_bytes[current_index:data_push_end])
+                    current_index = data_push_end
+                else:
+                    logger.warning(f"  Unknown opcode or length prefix found: {hex(length_or_opcode)}. Stopping extraction.")
+                    break
+            
+            logger.info(f"  Successfully extracted {len(data_pushes)} data pushes.")
+            return data_pushes
+            
+        logger.warning("No OP_RETURN output found in the transaction.")
+        return []
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during payload extraction: {e}")
+        return []
+
+def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
+    return extract_op_return_payload_correct_25_08_25(raw_tx_hex)
 
 def verify_ec_payload(payload: List[bytes], original_content: str) -> bool:
     """
@@ -527,7 +612,9 @@ def verify_x509_payload(payload: List[bytes], original_content: str) -> bool:
         logger.error(f"  Signature verification: FAIL - {e}")
         return False
 
-    
+
+# audit_core.py
+
 async def create_op_return_transaction(
         spending_key_wif: str,
         recipient_address: str, 
@@ -622,22 +709,36 @@ async def create_op_return_transaction(
     
     logger.info(f"  Attempting to create transaction for content: '{original_audit_content_string}'")
 
-    # 3. Create the OP_RETURN output
-    op_return_script_parts = ["OP_RETURN"]
-    if op_return_data_pushes:
-        for data_bytes in op_return_data_pushes:
-            op_return_script_parts.append(data_bytes.hex())
-    # CHANGE
-    # This block now adds the note with a mode byte, following the new flexible payload structure.
+    # 3. Create the OP_RETURN output with correct OP_PUSHDATA logic
+    op_return_script_bytes = bytes.fromhex("6a") # OP_RETURN (0x6a)
+
+    for data_bytes in op_return_data_pushes:
+        data_length = len(data_bytes)
+        
+        if data_length < 76:
+            op_return_script_bytes += bytes([data_length])
+        elif data_length <= 255:
+            op_return_script_bytes += bytes.fromhex("4c") + data_length.to_bytes(1, byteorder='little')
+        elif data_length <= 65535:
+            op_return_script_bytes += bytes.fromhex("4d") + data_length.to_bytes(2, byteorder='little')
+        elif data_length <= 4294967295:
+            op_return_script_bytes += bytes.fromhex("4e") + data_length.to_bytes(4, byteorder='little')
+        else:
+            logger.error("Data push is too large for a valid script.")
+            return None, None, None, [], []
+        
+        op_return_script_bytes += data_bytes
+    
+    # Add optional note if it exists
     if note:
         note_bytes = note.encode('utf-8')
-        op_return_script_parts.append(AUDIT_MODE_NOTE.hex())
-        op_return_script_parts.append(note_bytes.hex())
-
-    op_return_script_asm = " ".join(op_return_script_parts) 
-    op_return_script = Script.from_asm(op_return_script_asm)
+        op_return_script_bytes += bytes.fromhex("014e") # Mode byte (N) plus length byte
+        op_return_script_bytes += bytes([len(note_bytes)])
+        op_return_script_bytes += note_bytes
     
-    logger.info(f"OP_RETURN script (ASM representation from to_asm()): {op_return_script.to_asm()}")
+    op_return_script = Script(op_return_script_bytes.hex())
+    
+    logger.info(f"OP_RETURN script (Hex): {op_return_script.hex()}")
     
     print_op_return_scriptpubkey(op_return_script) 
 
@@ -734,7 +835,6 @@ async def create_op_return_transaction(
         return tx.hex(), broadcast_timestamp, broadcast_txid, consumed_utxos_details, new_utxos_details
     else:
         return None, None, None, [], [] # Return empty lists for UTXO changes on failure
-
        
 async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path: str, polling_interval_seconds: int = 30):
     """
