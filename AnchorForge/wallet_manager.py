@@ -1,5 +1,7 @@
 # wallet_manager.py
 '''
+Version 25-09-05
+
 Version 25-08-16
    make filename dependend on address used to avoid overwriting
 
@@ -10,6 +12,8 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 import logging
+import portalocker
+from portalocker import LOCK_EX
 
 from config import Config
 import utils
@@ -35,6 +39,7 @@ def load_utxo_store(file_path: str) -> Dict[str, Any]:
     """Load unused UTXOs from the JSON file."""
     try:
         with open(file_path, 'r') as f:
+            portalocker.lock(f, LOCK_EX)
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         # If the file doesn't exist or is empty, return an empty structure
@@ -44,6 +49,7 @@ def load_used_utxo_store(file_path: str) -> Dict[str, Any]:
     """Load used UTXOs from the JSON file."""
     try:
         with open(file_path, 'r') as f:
+            portalocker.lock(f, LOCK_EX)
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {"address": "", "used_utxos": [], "network": ""}
@@ -51,11 +57,13 @@ def load_used_utxo_store(file_path: str) -> Dict[str, Any]:
 def save_utxo_store(store: Dict, file_path: str):
     """Save unused UTXOs to the JSON file."""
     with open(file_path, 'w') as f:
+        portalocker.lock(f, LOCK_EX)
         json.dump(store, f, indent=4)
 
 def save_used_utxo_store(store: Dict, file_path: str):
     """Save used UTXOs to the JSON file."""
     with open(file_path, 'w') as f:
+        portalocker.lock(f,LOCK_EX)
         json.dump(store, f, indent=4)
 
 
@@ -64,6 +72,7 @@ def load_tx_store(file_path: str) -> Dict[str, Any]:
     """Load Tx from the JSON file."""
     try:
         with open(file_path, 'r') as f:
+            portalocker.lock(f, LOCK_EX)
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {"address": "", "transactions": [], "network": ""}
@@ -71,6 +80,7 @@ def load_tx_store(file_path: str) -> Dict[str, Any]:
 def save_tx_store(store: Dict, file_path: str):
     """Save TXs to the JSON file."""
     with open(file_path, 'w') as f:
+        portalocker.lock(f, LOCK_EX)
         json.dump(store, f, indent=4)
 
 

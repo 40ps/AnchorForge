@@ -1,6 +1,9 @@
 import json
 from typing import Dict, Any
 
+import portalocker
+from portalocker import LOCK_EX
+
 class BlockHeaderManager:
     """
     Manages the loading and saving of local Block Headers cache.
@@ -21,6 +24,7 @@ class BlockHeaderManager:
         """
         try:
             with open(self.file_path, 'r') as f:
+                portalocker.lock(f, LOCK_EX)
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             # If the file doesn't exist or is empty, start with an empty dictionary.
@@ -31,6 +35,7 @@ class BlockHeaderManager:
         Saves the current headers to the file.
         """
         with open(self.file_path, 'w') as f:
+            portalocker.lock(f,LOCK_EX)
             json.dump(self.headers, f, indent=4)
 
 # Example use
