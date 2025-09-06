@@ -839,7 +839,10 @@ async def create_op_return_transaction(
         return tx.hex(), broadcast_timestamp, broadcast_txid, consumed_utxos_details, new_utxos_details
     else:
         return None, None, None, [], [] # Return empty lists for UTXO changes on failure
-       
+
+
+DELAY_NEXT_MONITOR_REQUEST=1
+
 async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path: str, polling_interval_seconds: int = 30):
     """
     Monitors locally stored pending transactions for confirmation on the blockchain.
@@ -851,90 +854,151 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
         polling_interval_seconds (int): How often to check for confirmations.
     """
     logger.info(f"\n--- Starting Transaction Confirmation Monitor (polling every {polling_interval_seconds}s) ---")
-    
+
+    # only start if new blocks exist.
+    last_known_block_height = 0
+
+    # start first time to solve waiting queue
+    initial_run_completed = False  
+
     while True: # Loop indefinitely to keep monitoring
+        if initial_run_completed:
+            try:
+                chain_info = await blockchain_api.get_chain_info_woc()
+                current_block_height = chain_info.get("blocks", 0) if chain_info else 0
+
+                if current_block_height <= last_known_block_height:
+                    logger.info(f"  No new block found (current height: {current_block_height}). Sleeping...")
+                    await asyncio.sleep(polling_interval_seconds)
+                    continue # Nächsten Zyklus starten, ohne Transaktionen zu prüfen
+
+                logger.info(f"  New block found! Height changed from {last_known_block_height} to {current_block_height}. Checking transactions...")
+                last_known_block_height = current_block_height
+
+            except Exception as e:
+                logger.error(f"  Could not fetch current block height: {e}. Skipping this cycle.")
+                await asyncio.sleep(polling_interval_seconds)
+                continue
+         
+
         try:
-            with portalocker.Lock(Config.AUDIT_LOG_FILE, "r+", flags=LOCK_EX, timeout=5),\
-                portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5):
-
-
+            with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX, timeout=5):
+                
                 # Load the entire audit log, as this is our central source of truth for records and their status.
                 audit_log = load_audit_log()
 
             
-                # Filter records that have blockchain_record and whose status indicates they need monitoring.
-                # This includes "broadcasted" (waiting for block), "broadcast_failed" (might retry or inspect),
-                # or "pending_creation" (if we want the monitor to also attempt to broadcast, though currently
-                # create_op_return_transaction handles initial broadcast).
-                records_to_monitor = [
-                    record for record in audit_log
-                    if record.get("blockchain_record") and 
+            # Filter records that have blockchain_record and whose status indicates they need monitoring.
+            # This includes "broadcasted" (waiting for block), "broadcast_failed" (might retry or inspect),
+            # or "pending_creation" (if we want the monitor to also attempt to broadcast, though currently
+            # create_op_return_transaction handles initial broadcast).
+            records_to_monitor = [
+                record for record in audit_log
+                if record.get("blockchain_record") and 
+                    #X
                     record["blockchain_record"].get("status") in ["broadcasted", "broadcast_failed", "pending_creation"]
                 ]
-
-                if not records_to_monitor:
-                    logger.info("  No pending audit records to monitor. Sleeping...")
-                else:
-                    logger.info(f"  Monitoring {len(records_to_monitor)} audit records...")
-
-                for record in records_to_monitor:
-                    blockchain_rec = record["blockchain_record"]
-                    log_id = record["log_id"]
-                    txid = blockchain_rec.get("txid") # TXID might be None for "pending_creation" status
-
-                    # --- Handle "pending_creation" status (if create_op_return_transaction didn't broadcast yet) ---
-                    # Currently, create_op_return_transaction tries to broadcast immediately.
-                    # If txid is None here, it means create_op_return_transaction failed or wasn't fully executed.
-                    if not txid or blockchain_rec["status"] == "pending_creation":
-                        logger.warning(f"  Audit record '{log_id}' is still in 'pending_creation' status or missing TXID. Cannot check confirmation yet.")
-                        continue 
-                    
-                    logger.info(f"  Checking confirmation for audit record '{log_id}' (TXID: {txid})...")
-                    
-                    tx_info = await blockchain_api.get_transaction_status_woc(txid)
-
-                    if tx_info and tx_info.get("blockhash") and tx_info.get("blockheight"):
-                        logger.info(f"    Audit record '{log_id}' (TXID {txid}) confirmed in block {tx_info['blockheight']} ({tx_info['blockhash']}).")
-                        
-                        merkle_proof_data = await blockchain_api.get_merkle_path(txid)
-
-                        # Update the blockchain_record directly within the audit record entry
-                        blockchain_rec["status"] = "confirmed"
-                        blockchain_rec["block_hash"] = tx_info["blockhash"]
-                        blockchain_rec["block_height"] = tx_info["blockheight"]
-                        blockchain_rec["timestamp_confirmed_utc"] = datetime.now(timezone.utc).isoformat()
-                        
-                        if merkle_proof_data:
-                            blockchain_rec["merkle_proof_data"] = merkle_proof_data
-                            logger.info(f"    Merkle path for '{log_id}' saved to audit_log.")
-                        else:
-                            logger.warning(f"    Could not fetch Merkle path for confirmed record '{log_id}'. Marking as confirmed but incomplete proof.")
-                            blockchain_rec["merkle_proof_data"] = {"error": "Merkle proof unavailable"}
-                        
-                        # Update UTXO store for newly created UTXOs in this transaction (height)
-                        # This needs to be loaded and saved specifically by the monitor.
-
-                        utxo_store = wallet_manager.load_utxo_store(utxo_file_path)
-                        updated_utxos_count = 0
-                        for utxo in utxo_store["utxos"]:
-                            # Check if this UTXO was created by the confirmed transaction and its height is unknown
-                            if utxo["txid"] == txid and utxo.get("height", -1) == -1: 
-                                utxo["height"] = tx_info["blockheight"]
-                                updated_utxos_count += 1
-                        if updated_utxos_count > 0:
-                            wallet_manager.save_utxo_store(utxo_store, utxo_file_path)
-                            logger.info(f"    Updated height for {updated_utxos_count} UTXO(s) from TXID {txid} in local UTXO store.")
-
-                    elif blockchain_rec["status"] == "broadcasted":
-                        logger.info(f"    Audit record '{log_id}' (TXID {txid}) is on the network but not yet confirmed.")
-                    elif blockchain_rec["status"] == "broadcast_failed":
-                        logger.warning(f"    Audit record '{log_id}' (TXID {txid}) was previously marked 'broadcast_failed'. Still unconfirmed.")
-                    else:
-                        logger.warning(f"    Audit record '{log_id}' (TXID {txid}) status: '{blockchain_rec.get('status')}'. Still unconfirmed or encountered network issue.")
-
-                save_audit_log(audit_log)
+            
         except portalocker.exceptions.LockException:
-            logger.warning("Monitor could not acquire lock, skipping this cycle.")
+            logger.warning("Monitor could not acquire lock to get tasks, skipping this cycle.")
+            await asyncio.sleep(polling_interval_seconds)
+            continue # jump to next cycle
+
+
+        if not records_to_monitor:
+            logger.info("  No pending audit records to monitor. Sleeping...")
+        else:
+            logger.info(f"  Monitoring {len(records_to_monitor)} audit records...")
+
+            for record in records_to_monitor:
+                blockchain_rec = record["blockchain_record"]
+                
+                log_id = record["log_id"]
+                txid = blockchain_rec.get("txid") # TXID might be None for "pending_creation" status
+
+                if not txid:
+                    continue
+
+                # --- Handle "pending_creation" status (if create_op_return_transaction didn't broadcast yet) ---
+                # Currently, create_op_return_transaction tries to broadcast immediately.
+                # If txid is None here, it means create_op_return_transaction failed or wasn't fully executed.
+                if not txid or blockchain_rec["status"] == "pending_creation":
+                    logger.warning(f"  Audit record '{log_id}' is still in 'pending_creation' status or missing TXID. Cannot check confirmation yet.")
+                    continue 
+                        
+                logger.info(f"  Checking confirmation for audit record '{log_id}' (TXID: {txid})...")
+                        
+                # API Request (reminder Ensure low request rate)
+                tx_info = await blockchain_api.get_transaction_status_woc(txid)
+                await asyncio.sleep(DELAY_NEXT_MONITOR_REQUEST)
+
+                if tx_info and tx_info.get("blockhash") and tx_info.get("blockheight"):
+                    logger.info(f"    Audit record '{log_id}' (TXID {txid}) confirmed in block {tx_info['blockheight']} ({tx_info['blockhash']}).")
+
+                    # API Request (reminder Ensure low request rate)        
+                    merkle_proof_data = await blockchain_api.get_merkle_path(txid)
+                    await asyncio.sleep(DELAY_NEXT_MONITOR_REQUEST)
+
+                    try:
+                        with portalocker.Lock(Config.AUDIT_LOG_FILE,  "r+", flags=LOCK_EX, timeout=5), \
+                            portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5):
+
+                            # load data again to ensure work with most uptodate data
+                            current_audit_log = load_audit_log()
+                            utxo_store = wallet_manager.load_utxo_store(utxo_file_path)
+
+                            # data record to be updated
+                            target_record = next((r for r in current_audit_log if r.get("log_id") == log_id), None)
+
+                            if target_record:
+                                # Update the blockchain_record directly within the audit record entry
+                                blockchain_rec = target_record["blockchain_record"]
+                                blockchain_rec["status"] = "confirmed"
+                                blockchain_rec["block_hash"] = tx_info["blockhash"]
+                                blockchain_rec["block_height"] = tx_info["blockheight"]
+                                blockchain_rec["timestamp_confirmed_utc"] = datetime.now(timezone.utc).isoformat()
+                            
+                                if merkle_proof_data:
+                                    blockchain_rec["merkle_proof_data"] = merkle_proof_data
+                                    logger.info(f"    Merkle path for '{log_id}' saved to audit_log.")
+                                else:
+                                    logger.warning(f"    Could not fetch Merkle path for confirmed record '{log_id}'. Marking as confirmed but incomplete proof.")
+                                    blockchain_rec["merkle_proof_data"] = {"error": "Merkle proof unavailable"}
+
+
+                            
+                                # Update UTXO store for newly created UTXOs in this transaction (height)
+                                # This needs to be loaded and saved specifically by the monitor.
+
+                            
+                                updated_utxos_count = 0
+                                for utxo in utxo_store["utxos"]:
+                                    # Check if this UTXO was created by the confirmed transaction and its height is unknown
+                                    if utxo["txid"] == txid and utxo.get("height", -1) == -1: 
+                                        utxo["height"] = tx_info["blockheight"]
+                                        updated_utxos_count += 1
+                                if updated_utxos_count > 0:
+                                    wallet_manager.save_utxo_store(utxo_store, utxo_file_path)
+                                    logger.info(f"    Updated height for {updated_utxos_count} UTXO(s) from TXID {txid} in local UTXO store.")
+
+                        
+                                save_audit_log(current_audit_log)
+                                logger.info(f"    Successfully confirmed and updated record '{log_id}'.")
+
+                    except portalocker.exceptions.LockException:
+                        logger.warning("Monitor could not acquire lock, skipping this cycle.")
+                elif blockchain_rec["status"] == "broadcasted":
+                    logger.info(f"    Audit record '{log_id}' (TXID {txid}) is on the network but not yet confirmed.")
+                elif blockchain_rec["status"] == "broadcast_failed":
+                    logger.warning(f"    Audit record '{log_id}' (TXID {txid}) was previously marked 'broadcast_failed'. Still unconfirmed.")
+                else:
+                    logger.warning(f"    Audit record '{log_id}' (TXID {txid}) status: '{blockchain_rec.get('status')}'. Still unconfirmed or encountered network issue.")
+        if not initial_run_completed:
+            initial_run_completed = True
+            chain_info = await blockchain_api.get_chain_info_woc()
+            last_known_block_height = chain_info.get("blocks", 0) if chain_info else 0
+            logger.info(f"  Initial run completed. Now monitoring for new blocks starting from height {last_known_block_height}.")
+
 
         await asyncio.sleep(polling_interval_seconds)
 
