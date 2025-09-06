@@ -161,17 +161,21 @@ if __name__ == "__main__":
         # You could also add a placeholder for demo purposes if Config is not available
         # Config.X509_KEYPAIR_STORE_FILE = "local_x509_keys.json"
         
+    ''' 
     new_cert = generate_x509_key_pair(
-        label='test_certificate',
+        label='anchor_test_certificate',
         common_name='www.example.com',
         country='DE',
         state='Baden-Württemberg',
         locality='Freiburg',
-        organization='VAI Project'
+        organization='AnchorForge Project'
     )
+
+    '''
     
+    print("Only showing one certificate.")
     # Retrieve the certificate using its label
-    cert_info = get_x509_key_pair_by_label('test_certificate')
+    cert_info = get_x509_key_pair_by_label('anchor_test_certificate')
     if cert_info:
         print("\n--- Retrieved Full X.509 Certificate Info ---")
         print(f"Label: {cert_info.get('label')}")
