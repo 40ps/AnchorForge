@@ -34,7 +34,7 @@ def _get_filename_for_address(address: str, network_name: str) -> str:
 
 
 # --- Section local UTXO and Tx Store
-
+'''
 def load_utxo_store(file_path: str) -> Dict[str, Any]:
     """Load unused UTXOs from the JSON file."""
     try:
@@ -82,6 +82,53 @@ def save_tx_store(store: Dict, file_path: str):
     with open(file_path, 'w') as f:
         portalocker.lock(f, LOCK_EX)
         json.dump(store, f, indent=4)
+'''
+
+# --- Section local UTXO and Tx Store
+
+def load_utxo_store(f) -> Dict[str, Any]:
+    """Load unused UTXOs from an open file object."""
+    try:
+        f.seek(0)
+        return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"address": "", "utxos": [], "network": ""}
+
+def load_used_utxo_store(f) -> Dict[str, Any]:
+    """Load used UTXOs from an open file object."""
+    try:
+        f.seek(0)
+        return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"address": "", "used_utxos": [], "network": ""}
+
+def save_utxo_store(f, store: Dict):
+    """Save unused UTXOs to an open file object."""
+    f.seek(0)
+    json.dump(store, f, indent=4)
+    f.truncate()
+
+def save_used_utxo_store(f, store: Dict):
+    """Save used UTXOs to an open file object."""
+    f.seek(0)
+    json.dump(store, f, indent=4)
+    f.truncate()
+
+
+# --- Transaction Store
+def load_tx_store(f) -> Dict[str, Any]:
+    """Load Tx from an open file object."""
+    try:
+        f.seek(0)
+        return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"address": "", "transactions": [], "network": ""}
+
+def save_tx_store(f, store: Dict):
+    """Save TXs to an open file object."""
+    f.seek(0)
+    json.dump(store, f, indent=4)
+    f.truncate()
 
 
 async def initialize_utxo_store(private_key_wif: str, network_name: str):
@@ -128,47 +175,57 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
-    # Load and update the UTXO store
-    utxo_store = load_utxo_store(utxo_file_path)
-    utxo_store["address"] = str(sender_address)
-    utxo_store["network"] = network_name
-    utxo_store["utxos"] = formatted_utxos_for_store
-    save_utxo_store(utxo_store, utxo_file_path)
-    print(f"UTXO store initialized with {len(formatted_utxos_for_store)} UTXOs.")
 
+    # 1. Lock tx_store
     # Initialize empty tx_store if it doesn't exist
-    tx_store = load_tx_store(tx_file_path)
-    if not tx_store.get("address") or tx_store["address"] != str(sender_address) or tx_store["network"] != network_name:
-        print(f"TX store being initialized/reset for address {sender_address}.")
-        tx_store = {"address": str(sender_address),
-                    "network": network_name,
-                    "transactions": []}
-    
-    # Collect unique txids from utxos
-    existing_txids = {tx["txid"] for tx in tx_store["transactions"]}
-    new_txids_to_cache = {utxo["txid"] for utxo in formatted_utxos_for_store if utxo["txid"] not in existing_txids}
-    
-    # Add placeholder entries for new txids
-    for txid_to_cache in new_txids_to_cache:
-        raw_source_tx_hex = await blockchain_api.fetch_raw_transaction_hex(txid_to_cache)
-        if raw_source_tx_hex is None:
-            print(f"Skipping txid {txid_to_cache}, could not fetch raw Tx")
-            continue
+    with portalocker.Lock(tx_file_path, "r+", flags=LOCK_EX, timeout=5) as f:
+        tx_store = load_tx_store(f)
+        if not tx_store.get("address") or tx_store["address"] != str(sender_address) or tx_store["network"] != network_name:
+            print(f"TX store being initialized/reset for address {sender_address}.")
+            tx_store = {"address": str(sender_address),
+                        "network": network_name,
+                        "transactions": []}
         
-        tx_store["transactions"].append({
-            "txid": txid_to_cache,
-            "rawtx": raw_source_tx_hex,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
-    
-    save_tx_store(tx_store, tx_file_path)
+        # Collect unique txids from utxos
+        existing_txids = {tx["txid"] for tx in tx_store["transactions"]}
+        new_txids_to_cache = {utxo["txid"] for utxo in formatted_utxos_for_store if utxo["txid"] not in existing_txids}
+        
+        # Add placeholder entries for new txids
+        for txid_to_cache in new_txids_to_cache:
+            raw_source_tx_hex = await blockchain_api.fetch_raw_transaction_hex(txid_to_cache)
+            if raw_source_tx_hex is None:
+                print(f"Skipping txid {txid_to_cache}, could not fetch raw Tx")
+                continue
+            
+            tx_store["transactions"].append({
+                "txid": txid_to_cache,
+                "rawtx": raw_source_tx_hex,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+        
+        save_tx_store(f, tx_store)
     print(f"TX store cache populated with {len(new_txids_to_cache)} new raw transactions.")
 
-    # Populate and save used_utxo_store.json
-    used_store = load_used_utxo_store(used_utxo_file_path)
-    if not used_store.get("address") or used_store["address"] != str(sender_address) or used_store["network"] != network_name:
-        print(f"USED UTXO store being initialized/reset for address {sender_address}.")
-        used_store = {"address": str(sender_address), "network": network_name, "used_utxos": []}
-        save_used_utxo_store(used_store, used_utxo_file_path)
 
-    return utxo_store # Return the (updated) utxo_store data in memory
+    # Populate and save used_utxo_store.json
+    # 2. Lock used_utxo_store
+    with portalocker.Lock(used_utxo_file_path, "w", flags=LOCK_EX, timeout=5) as f:
+        used_store = load_used_utxo_store(f)
+        if not used_store.get("address") or used_store["address"] != str(sender_address) or used_store["network"] != network_name:
+            print(f"USED UTXO store being initialized/reset for address {sender_address}.")
+            used_store = {"address": str(sender_address), "network": network_name, "used_utxos": []}
+            save_used_utxo_store(f, used_store)
+
+    
+
+    # Load and update the UTXO store
+    # 3. Lock UTXO Store as last!
+    with portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5) as f:
+        utxo_store = load_utxo_store(f) 
+        utxo_store["address"] = str(sender_address)
+        utxo_store["network"] = network_name
+        utxo_store["utxos"] = formatted_utxos_for_store
+        save_utxo_store(f, utxo_store)
+    print(f"UTXO store initialized with {len(formatted_utxos_for_store)} UTXOs.")
+
+    return 
