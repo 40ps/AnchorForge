@@ -2,13 +2,14 @@
 
 import asyncio
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, IO
 from typing import cast
 from datetime import datetime, timezone
 import uuid # for generating unique identifiers
 import logging
 import portalocker
 from portalocker import LOCK_EX
+
 
 from config import Config
 import blockchain_api
@@ -47,26 +48,25 @@ AUDIT_MODE_X509 = b'X' # 'X' for X.509 Certificate
 # New constant for a generic note payload.
 AUDIT_MODE_NOTE = b'N' # 'N' for a Note or a comment.
 
-def load_audit_log() -> List[Dict]:
+def load_audit_log(f) -> List[Dict]:
     """
-    Loads audit records from the audit log JSON file.
+    Loads audit records from an open file object.
+    ASSUMES THE CALLING FUNCTION MANAGES THE FILE LOCK.
     """
     try:
-        with open(Config.AUDIT_LOG_FILE, 'r') as f:
-            portalocker.lock(f, LOCK_EX)
-            return json.load(f)
+        f.seek(0) # Sicherstellen, dass vom Anfang gelesen wird
+        return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        # The audit log is a list of records, so it starts empty if the file doesn't exist.
         return []
 
-def save_audit_log(audit_records: List[Dict]):
+def save_audit_log(f, audit_records: List[Dict]):
     """
-    Saves audit records to the audit log JSON file.
+    Saves audit records to an open file object.
+    ASSUMES THE CALLING FUNCTION MANAGES THE FILE LOCK.
     """
-    with open(Config.AUDIT_LOG_FILE, 'w') as f:
-        portalocker.lock(f, LOCK_EX)
-        json.dump(audit_records, f, indent=4)
-
+    f.seek(0)
+    json.dump(audit_records, f, indent=4)
+    f.truncate()
 
 def print_op_return_scriptpubkey(script: Script):
     """
@@ -625,8 +625,9 @@ async def create_op_return_transaction(
         op_return_data_pushes: List[bytes],
         original_audit_content_string: str,
         network: Network,
-        utxo_file_path: str,
-        tx_file_path: str,
+        current_utxo_store_data: Dict,
+        tx_store: Dict,
+        f_tx_store: IO, 
         note: Optional[str] = None
 ) -> tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict]]:
     """
@@ -649,8 +650,8 @@ async def create_op_return_transaction(
     logger.info(f"\n--- Creating OP_RETURN Transaction from {recipient_address} ---")
     
     # 1. Load local stores here, as this function manages their state updates.
-    current_utxo_store_data = wallet_manager.load_utxo_store(utxo_file_path)
-    tx_store = wallet_manager.load_tx_store(tx_file_path)
+    # TODO: remove on success: current_utxo_store_data = wallet_manager.load_utxo_store(utxo_file_path)
+    # TODO: remove on success: tx_store = wallet_manager.load_tx_store(tx_file_path)
 
     available_utxos = [utxo for utxo in current_utxo_store_data["utxos"] if not utxo["used"] and utxo["satoshis"] >= Config.FEE_STRATEGY * 5]
     if not available_utxos:
@@ -683,7 +684,7 @@ async def create_op_return_transaction(
                     "rawtx": raw_source_tx_hex,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
-                wallet_manager.save_tx_store(tx_store, tx_file_path)
+                wallet_manager.save_tx_store(f_tx_store, tx_store)
             else:
                 logger.warning(f"Skipping UTXO {utxo['txid']}:{utxo['vout']} due to failure to get source transaction hex.")
                 continue 
@@ -808,7 +809,7 @@ async def create_op_return_transaction(
             #"blockheight": None,         # Initialize blockheight as null
             #"merkle_proof": None         # Initialize merkle_proof as null
         })
-    wallet_manager.save_tx_store(tx_store, tx_file_path)
+    wallet_manager.save_tx_store(f_tx_store, tx_store)
 
     broadcast_txid = await blockchain_api.broadcast_transaction(tx.hex())
     broadcast_timestamp = datetime.now(timezone.utc).isoformat() if broadcast_txid else None
@@ -882,10 +883,10 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
          
 
         try:
-            with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX, timeout=5):
+            with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX, timeout=5) as f:
                 
                 # Load the entire audit log, as this is our central source of truth for records and their status.
-                audit_log = load_audit_log()
+                audit_log = load_audit_log(f)
 
             
             # Filter records that have blockchain_record and whose status indicates they need monitoring.
@@ -908,7 +909,10 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
         if not records_to_monitor:
             logger.info("  No pending audit records to monitor. Sleeping...")
         else:
-            logger.info(f"  Monitoring {len(records_to_monitor)} audit records...")
+            if not initial_run_completed:
+                logger.info(f"  Initial run: Processing {len(records_to_monitor)} backlog records...")
+            else:
+                logger.info(f"  Monitoring {len(records_to_monitor)} audit records...")
 
             for record in records_to_monitor:
                 blockchain_rec = record["blockchain_record"]
@@ -940,12 +944,12 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                     await asyncio.sleep(DELAY_NEXT_MONITOR_REQUEST)
 
                     try:
-                        with portalocker.Lock(Config.AUDIT_LOG_FILE,  "r+", flags=LOCK_EX, timeout=5), \
-                            portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5):
+                        with portalocker.Lock(Config.AUDIT_LOG_FILE,  "r+", flags=LOCK_EX, timeout=5) as f_audit, \
+                            portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5) as f_utxo:
 
                             # load data again to ensure work with most uptodate data
-                            current_audit_log = load_audit_log()
-                            utxo_store = wallet_manager.load_utxo_store(utxo_file_path)
+                            current_audit_log = load_audit_log(f_audit)
+                            utxo_store = wallet_manager.load_utxo_store(f_utxo)
 
                             # data record to be updated
                             target_record = next((r for r in current_audit_log if r.get("log_id") == log_id), None)
@@ -978,11 +982,11 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                                         utxo["height"] = tx_info["blockheight"]
                                         updated_utxos_count += 1
                                 if updated_utxos_count > 0:
-                                    wallet_manager.save_utxo_store(utxo_store, utxo_file_path)
+                                    wallet_manager.save_utxo_store(f_utxo, utxo_store)
                                     logger.info(f"    Updated height for {updated_utxos_count} UTXO(s) from TXID {txid} in local UTXO store.")
 
                         
-                                save_audit_log(current_audit_log)
+                                save_audit_log(f_audit, current_audit_log)
                                 logger.info(f"    Successfully confirmed and updated record '{log_id}'.")
 
                     except portalocker.exceptions.LockException:
@@ -995,10 +999,12 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                     logger.warning(f"    Audit record '{log_id}' (TXID {txid}) status: '{blockchain_rec.get('status')}'. Still unconfirmed or encountered network issue.")
         if not initial_run_completed:
             initial_run_completed = True
-            chain_info = await blockchain_api.get_chain_info_woc()
-            last_known_block_height = chain_info.get("blocks", 0) if chain_info else 0
-            logger.info(f"  Initial run completed. Now monitoring for new blocks starting from height {last_known_block_height}.")
-
+            try:
+                chain_info = await blockchain_api.get_chain_info_woc()
+                last_known_block_height = chain_info.get("blocks", 0) if chain_info else 0
+                logger.info(f"  Initial run completed. Now monitoring for new blocks starting from height {last_known_block_height}.")
+            except Exception as e:
+                logger.error(f"Could not fetch block height after initial run:{e}")
 
         await asyncio.sleep(polling_interval_seconds)
 
@@ -1020,7 +1026,8 @@ async def audit_record_verifier(log_id: str) -> bool:
     """
     logger.info(f"\n### AUDITOR VERIFICATION FOR LOG ID: {log_id} ###")
     
-    audit_log = load_audit_log()
+    with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX) as f:  
+        audit_log = load_audit_log(f)
     
     record = next((r for r in audit_log if r.get("log_id") == log_id), None)
     if not record:
@@ -1234,7 +1241,8 @@ async def audit_all_records():
     """
     logger.info(f"\n### STARTING BATCH AUDIT OF ALL CONFIRMED RECORDS ###")
     
-    audit_log = load_audit_log()
+    with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX) as f:
+        audit_log = load_audit_log(f)
     
     # Filter for records that are marked as 'confirmed' and thus have all necessary info
     # for a full audit (txid, block_hash, merkle_proof).
