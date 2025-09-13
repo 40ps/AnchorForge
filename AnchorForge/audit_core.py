@@ -735,11 +735,37 @@ async def create_op_return_transaction(
         op_return_script_bytes += data_bytes
     
     # Add optional note if it exists
+    # if note:
+    #     note_bytes = note.encode('utf-8')
+    #     op_return_script_bytes += bytes.fromhex("014e") # Mode byte (N) plus length byte
+    #     op_return_script_bytes += bytes([len(note_bytes)])
+    #     op_return_script_bytes += note_bytes
+
+
+    # Add optional note if it exists
     if note:
-        note_bytes = note.encode('utf-8')
-        op_return_script_bytes += bytes.fromhex("014e") # Mode byte (N) plus length byte
-        op_return_script_bytes += bytes([len(note_bytes)])
-        op_return_script_bytes += note_bytes
+        note_payload = [
+            AUDIT_MODE_NOTE,
+            note.encode('utf-8')
+        ]
+        for data_bytes in note_payload:
+            data_length = len(data_bytes)
+
+            if data_length < 76:
+                op_return_script_bytes += bytes([data_length])
+            elif data_length <= 255:
+                op_return_script_bytes += bytes.fromhex("4c") + data_length.to_bytes(1, byteorder='little')
+            elif data_length <= 65535:
+                op_return_script_bytes += bytes.fromhex("4d") + data_length.to_bytes(2, byteorder='little')
+            elif data_length <= 4294967295:
+                op_return_script_bytes += bytes.fromhex("4e") + data_length.to_bytes(4, byteorder='little')
+            else:
+                logger.error("Note data push is too large for a valid script.")
+                return None, None, None, [], []
+
+            op_return_script_bytes += data_bytes
+
+
     
     op_return_script = Script(op_return_script_bytes.hex())
     
