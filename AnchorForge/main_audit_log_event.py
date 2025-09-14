@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import uuid
 import os
 import sys
+import argparse
 import portalocker
 from portalocker import LOCK_EX
 
@@ -33,14 +34,22 @@ logging.basicConfig(
     ]
 )
 
-async def log_intermediate_result_process(data_source: str|None = None):
+
+
+
+async def log_intermediate_result_process(data_source: str|None = None, record_note: str|None = None):
     """
     Orchestrates the process of creating and broadcasting an audit record
     in a single, atomic file-locking operation.
+
+    Args:
+        data_source: str|None : the data string or the filename to file containing the data string, 
+                                a default timestamped string for demo by default
+        record_note: str|None : a note that should be added to the audit record
     """
     logging.info(f"\n--- Starting Audit Log Process ---")
 
-    # --- Block 1: Datenquelle bestimmen (Ihre Logik, unverändert) ---
+    # --- Block 1: data source ---
     intermediate_audit_content_string = ""
     note_content = ""
     if data_source is None:
@@ -59,9 +68,19 @@ async def log_intermediate_result_process(data_source: str|None = None):
     else:
         intermediate_audit_content_string = data_source
         note_content = "Content from direct string input"
+
+    # Prepare the note for the audit record
+    if record_note is None:
+        # Default string to demo the principle availability of a note
+        audit_record_note = "Intermediate process result audit log entry"
+    else:
+        audit_record_note = record_note
     
     logging.info(f"\n--- New Audit Content ---")
     logging.info(f"  Content to be logged: '{intermediate_audit_content_string[:200]}...'")
+
+
+    return # Secure stop to avoid accidently calling create_op_return_transaction
 
     # --- Block 2: Dateipfade vorbereiten (unverändert) ---
     priv_key_funding = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
@@ -172,15 +191,77 @@ async def log_intermediate_result_process(data_source: str|None = None):
 
     logging.info("\n--- Finished Audit Log Process ---")
 
+def get_content_from_source(source: str | None) -> str | None:
+    if source is None:
+        return None
+    if os.path.isfile(source):
+        try:
+            with open(source, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            print(f"Error reading file {source}: {e}")
+            sys.exit(1) # end script at error
+    return source
+
+
 if __name__ == "__main__":
-    # Prüfen, ob ein Kommandozeilenargument (der Dateiname) übergeben wurde
+    parser = argparse.ArgumentParser(
+        description="Creates and broadcasts an audit record transaction.",
+        formatter_class=argparse.RawTextHelpFormatter # for nicer help texts
+    )
+    
+    # 2. optional arguments
+    parser.add_argument(
+        '-d', '--data',
+        help="The data to be anchored. Can be a direct string or a file path."
+    )
+    parser.add_argument(
+        '-rn', '--record-note',
+        help="A note for the local audit record. Can be a direct string or a file path."
+    )
+    parser.add_argument(
+        '-tn', '--transaction-note',
+        help="A note to be included in the OP_RETURN transaction. Can be a direct string or a file path."
+    )
+    
+    # 3. read arguments from command line
+    args = parser.parse_args()
+
+    # 4. resolve content from each data source
+    data_content = get_content_from_source(args.data)
+    record_note_content = get_content_from_source(args.record_note)
+    tx_note_content = get_content_from_source(args.transaction_note)
+
+    # 5. call core function 
+    if args.data is None:
+        logging.info("No data source provided, running with default (timestamp) data.")
+        # asyncio.run(log_intermediate_result_process())
+    else:
+        logging.info(f"Received data source: {args.data}")
+        logging.info(f"Received audit record note source: {record_note_content}")
+        logging.info(f"Received audit record note source: {tx_note_content}")
+
+        # Beispielhafter Aufruf der (noch anzupassenden) Hauptfunktion
+        # asyncio.run(log_intermediate_result_process(
+        #     data_content=data_content,
+        #     record_note_content=record_note_content,
+        #     tx_note_content=tx_note_content
+        # ))
+
+
+'''
+if __name__ == "__main__":
+
+    # exists File name for data?
     if len(sys.argv) > 1:
-        # Das erste Argument (sys.argv[1]) wird als Dateiname verwendet
+        # (sys.argv[1]) file name 
         file_name = sys.argv[1]
+        
         logging.info(f"Received file '{file_name}' from command line as data source.")
-        # Rufen Sie den Prozess mit dem Dateinamen auf
+        
         asyncio.run(log_intermediate_result_process(data_source=file_name))
     else:
-        # Wenn kein Argument übergeben wird, das Standardverhalten (Dummy-Text) ausführen
+        # default: use internal dummy text
         logging.info("No command line argument provided, running with default (timestamp) data.")
         asyncio.run(log_intermediate_result_process())
+'''
