@@ -86,9 +86,11 @@ class Config:
 
 
     # --- Control Behavior (loaded from .env and cast to correct types) ---
-    FEE_STRATEGY = int(os.getenv("FEE_STRATEGY", 300))
-    LOGGING_UTXO_THRESHOLD = int(os.getenv("LOGGING_UTXO_THRESHOLD", 301))
+    FEE_STRATEGY = int(os.getenv("FEE_STRATEGY", 30))
+    LOGGING_UTXO_THRESHOLD = int(os.getenv("LOGGING_UTXO_THRESHOLD", 31))
     MONITOR_POLLING_INTERVAL = int(os.getenv("MONITOR_POLLING_INTERVAL", 30))
+    DELAY_NEXT_MONITOR_REQUEST=1
+    
     MAINSCRIPT_RUNNING = int(os.getenv("MAINSCRIPT_RUNNING", 1000))
     IGNORE_REST = os.getenv("IGNORE_REST", "True").lower() in ('true', '1', 't')
     
