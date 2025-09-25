@@ -35,9 +35,14 @@ logging.basicConfig(
 )
 
 
+#AUDIT_RECORD_FORMAT_STRING = "TX, OP_RETURN format: [mode:byte, [( (hash:bytes, signature:bytes, [pubkey:bytes|certificate:bytes])|(note:bytes) ]+"
 
-
-async def log_intermediate_result_process(data_source: str|None = None, record_note: str|None = None):
+async def log_intermediate_result_process(
+        data_source: str|None = None, 
+        record_note_content: str|None = None,
+        tx_note_content: str|None = None,
+        dry_run: bool = False
+        ):
     """
     Orchestrates the process of creating and broadcasting an audit record
     in a single, atomic file-locking operation.
@@ -45,51 +50,77 @@ async def log_intermediate_result_process(data_source: str|None = None, record_n
     Args:
         data_source: str|None : the data string or the filename to file containing the data string, 
                                 a default timestamped string for demo by default
-        record_note: str|None : a note that should be added to the audit record
+        record_note_content: str|None : a note that should be added to the audit record, a string or content of the filename
+        tx_note_content: str|None: a note that will be added to OP_RETURN, a string or content of the filename
     """
     logging.info(f"\n--- Starting Audit Log Process ---")
 
     # --- Block 1: data source ---
     intermediate_audit_content_string = ""
-    note_content = ""
+    record_note = ""
+    tx_note = ""
+
+
     if data_source is None:
         timestamp_str = datetime.now(timezone.utc).isoformat()
         intermediate_audit_content_string = f"Audit Log Entry: Process step completed at {timestamp_str}. Result: SUCCESS. [Germany Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
-        note_content = "Default Test Entry"
-    elif os.path.isfile(data_source):
-        try:
-            with open(data_source, 'r', encoding='utf-8') as f:
-                file_content = f.read()
-            intermediate_audit_content_string = file_content
-            note_content = file_content
-        except Exception as e:
-            logging.error(f"Could not read file '{data_source}': {e}")
-            return
     else:
         intermediate_audit_content_string = data_source
-        note_content = "Content from direct string input"
 
-    # Prepare the note for the audit record
-    if record_note is None:
-        # Default string to demo the principle availability of a note
-        audit_record_note = "Intermediate process result audit log entry"
-    else:
-        audit_record_note = record_note
-    
+
+    #     os.path.isfile(data_source):
+    #     try:
+    #         with open(data_source, 'r', encoding='utf-8') as f:
+    #             file_content = f.read()
+    #         intermediate_audit_content_string = file_content
+    #         # note_content = file_content
+    #     except Exception as e:
+    #         logging.error(f"Could not read file '{data_source}': {e}")
+    #         return
+    # else:
+    #     intermediate_audit_content_string = data_source
+
     logging.info(f"\n--- New Audit Content ---")
     logging.info(f"  Content to be logged: '{intermediate_audit_content_string[:200]}...'")
 
 
-    return # Secure stop to avoid accidently calling create_op_return_transaction
 
-    # --- Block 2: Dateipfade vorbereiten (unverändert) ---
+    if record_note_content is None:
+        # do nothing (what happens with an empty note?)
+        logging.info(f"No record note given, using standard")
+        record_note = audit_core.AUDIT_RECORD_FORMAT_V1
+    else:
+        record_note = record_note_content
+
+    logging.info(f"\n--- New Audit note ---")
+    logging.info(f"  Content to be noted: '{record_note[:200]}...'")
+
+
+    if tx_note_content is None:
+        # do nothing (what happens with an empty note?)
+        logging.info(f"No tx note given. Using empty")
+        tx_note = None
+    else:
+        tx_note = tx_note_content
+
+
+    logging.info(f"\n--- New Tx Note ---")
+    if tx_note is None:
+        logging.info("Content to be noted: None")
+    else:
+        logging.info(f"  Content to be noted: '{tx_note[:200]}...'")
+
+
+    #return # Secure stop to avoid accidently calling create_op_return_transaction
+
+    # --- Block 2: prepare file paths ---
     priv_key_funding = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = priv_key_funding.address()
     utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME)
     tx_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "tx_store")
     used_utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "used_utxo_store")
 
-    # --- Block 3: Atomare Operation: Sperren, Laden, Verarbeiten, Speichern ---
+    # --- Block 3: Atomic operations: lock, load, process, store ---
     try:
         # order is important
         with portalocker.Lock(Config.AUDIT_LOG_FILE, "r+", flags=LOCK_EX, timeout=5) as f_audit, \
@@ -104,12 +135,12 @@ async def log_intermediate_result_process(data_source: str|None = None, record_n
             store = wallet_manager.load_utxo_store(f_utxo)
   
 
-            # 2. Payloads und Audit-Record im Speicher erstellen
+            # 2. create Payloads and Audit-Record in memory
             assert Config.PRIVATE_SIGNING_KEY_WIF is not None
             ec_payload = audit_core.build_audit_payload(intermediate_audit_content_string, Config.PRIVATE_SIGNING_KEY_WIF)
             
             x509_payload = []
-            x509_key_label = 'anchor_test_certificate' if Config.ACTIVE_NETWORK_NAME == "test" else 'anchor_main_certificate'
+            x509_key_label = 'anchor_example_certificate' if Config.ACTIVE_NETWORK_NAME == "test" else 'anchor_example_certificate'
             cert_info = key_x509_manager.get_x509_key_pair_by_label(x509_key_label)
             
             if cert_info:
@@ -120,11 +151,12 @@ async def log_intermediate_result_process(data_source: str|None = None, record_n
 
             op_return_payload_for_tx = ec_payload + x509_payload
             
-            # Temporärer Audit-Record im Speicher
+            # Temporary Audit-Record in memory
             audit_record_entry = {
                 "log_id": str(uuid.uuid4()),
                 "original_audit_content": intermediate_audit_content_string,
                 "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
+                "format": audit_core.AUDIT_RECORD_FORMAT_V1,
                 "blockchain_record": {
                     "txid": None, "raw_transaction_hex": None, "status": "pending_creation",
                     "data_hash_pushed_to_op_return": ec_payload[1].hex() if ec_payload else None,
@@ -133,7 +165,8 @@ async def log_intermediate_result_process(data_source: str|None = None, record_n
                     "x509_hash_pushed": x509_payload[1].hex() if x509_payload else None,
                     "x509_signature_pushed": x509_payload[2].hex() if x509_payload else None,
                     "x509_certificate_pushed": x509_payload[3].decode('utf-8') if x509_payload else None,
-                }, "notes": "Intermediate process result audit log entry"
+                    "tx_node": tx_note
+                }, "notes": record_note
             }
             
             # 3. Create Transaction
@@ -147,15 +180,16 @@ async def log_intermediate_result_process(data_source: str|None = None, record_n
                 network=Config.ACTIVE_NETWORK_BSV,
                 current_utxo_store_data=store,
                 tx_store=tx_store,
-                f_tx_store=f_tx, # Dateihandle wird jetzt korrekt übergeben
-                note=note_content
+                f_tx_store=f_tx, # file handle!
+                note=tx_note,
+                dry_run = dry_run
             )
 
-            # 4. Wenn Transaktion erfolgreich, alle Änderungen in die Stores schreiben
+            # 4. if tx success, write all changes into stores
             if tx_hex_returned and broadcast_txid:
                 logging.info(f"Transaction created & broadcasted: {broadcast_txid}")
                 
-                # Audit-Record aktualisieren und zur Log-Liste hinzufügen
+                # update Audit-Record, add to Log-List
                 audit_record_entry["blockchain_record"].update({
                     "txid": broadcast_txid,
                     "raw_transaction_hex": tx_hex_returned,
@@ -164,7 +198,7 @@ async def log_intermediate_result_process(data_source: str|None = None, record_n
                 })
                 audit_log.append(audit_record_entry)
 
-                # UTXO-Stores aktualisieren
+                # update UTXO-Stores 
                 for consumed_utxo in consumed_utxos_details:
                     store["utxos"] = [u for u in store["utxos"] if not (u["txid"] == consumed_utxo["txid"] and u["vout"] == consumed_utxo["vout"])]
                     consumed_utxo.update({"used": True, "used_in_txid": broadcast_txid, "used_timestamp": datetime.now(timezone.utc).isoformat()})
@@ -172,15 +206,16 @@ async def log_intermediate_result_process(data_source: str|None = None, record_n
                 
                 store["utxos"].extend(new_utxos_details)
                 
-                # 5. Alle geänderten Stores sicher zurückschreiben
+                # 5. write all changed stores securely
                 wallet_manager.save_utxo_store(f_utxo, store)
                 wallet_manager.save_used_utxo_store(f_used, used_store)
                 audit_core.save_audit_log(f_audit, audit_log)
+                wallet_manager.save_tx_store(f_tx, tx_store)
                 
                 logging.info("All local stores updated successfully.")
             
             else:
-                # Transaktion fehlgeschlagen, nur den fehlgeschlagenen Audit-Record speichern
+                # tx failed: only store failed audit-record
                 audit_record_entry["blockchain_record"]["status"] = "tx_creation_failed"
                 audit_log.append(audit_record_entry)
                 audit_core.save_audit_log(f_audit, audit_log)
@@ -223,7 +258,12 @@ if __name__ == "__main__":
         '-tn', '--transaction-note',
         help="A note to be included in the OP_RETURN transaction. Can be a direct string or a file path."
     )
-    
+    parser.add_argument(
+        '--dry-run',
+        action='store_true', # Speichert True, wenn das Flag gesetzt ist
+        help="Perform a dry run: build the transaction and show fees, but do not broadcast."
+    )
+
     # 3. read arguments from command line
     args = parser.parse_args()
 
@@ -232,21 +272,19 @@ if __name__ == "__main__":
     record_note_content = get_content_from_source(args.record_note)
     tx_note_content = get_content_from_source(args.transaction_note)
 
-    # 5. call core function 
-    if args.data is None:
-        logging.info("No data source provided, running with default (timestamp) data.")
-        # asyncio.run(log_intermediate_result_process())
-    else:
-        logging.info(f"Received data source: {args.data}")
-        logging.info(f"Received audit record note source: {record_note_content}")
-        logging.info(f"Received audit record note source: {tx_note_content}")
+    logging.info(f"Received data content: {data_content}")
+    logging.info(f"Received audit record note: {record_note_content}")
+    logging.info(f"Received audit tx note: {tx_note_content}")
 
-        # Beispielhafter Aufruf der (noch anzupassenden) Hauptfunktion
-        # asyncio.run(log_intermediate_result_process(
-        #     data_content=data_content,
-        #     record_note_content=record_note_content,
-        #     tx_note_content=tx_note_content
-        # ))
+    # 5. call core function 
+    asyncio.run(log_intermediate_result_process(
+            data_source=data_content,
+            record_note_content=record_note_content,
+             tx_note_content=tx_note_content,
+             dry_run=args.dry_run
+        ))
+
+ 
 
 
 '''
