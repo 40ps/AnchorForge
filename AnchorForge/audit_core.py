@@ -48,6 +48,9 @@ AUDIT_MODE_X509 = b'X' # 'X' for X.509 Certificate
 # New constant for a generic note payload.
 AUDIT_MODE_NOTE = b'N' # 'N' for a Note or a comment.
 
+# Definiert die logische Struktur des OP_RETURN Payloads für Version 1.
+AUDIT_RECORD_FORMAT_V1 = "anchor-forge-v1:(E,H,S,P)|(X,H,S,C)|(N,T)+"
+
 def load_audit_log(f) -> List[Dict]:
     """
     Loads audit records from an open file object.
@@ -403,6 +406,9 @@ def extract_op_return_payload_false_25_08_26(raw_tx_hex: str) -> List[bytes]:
                      OP_RETURN script. Returns an empty list if no OP_RETURN
                      output is found or an error occurs.
     """
+    # TODO remove funktion
+    logger.warning("\n Only for reference, contains read bug, ignores case missing OP_FALSE")
+
     logger.info("\n--- Extracting OP_RETURN Payload from Transaction ---")
     try:
         tx = Transaction.from_hex(raw_tx_hex)
@@ -416,18 +422,18 @@ def extract_op_return_payload_false_25_08_26(raw_tx_hex: str) -> List[bytes]:
             # CHANGE: Log the script hex to debug parsing issues.
             logger.info(f"  Checking output script (hex): {locking_script.hex()}")
 
-            # Check for the OP_RETURN opcode (0x6a) at the beginning of the script
-            if locking_script.chunks and locking_script.chunks[0].op == 0x6a:
-                logger.info(f"  Found OP_RETURN output at index {tx.outputs.index(tx_output)}.")
+            # Check for the OP_FALSE (0x00) OP_RETURN opcode (0x6a) at the beginning of the script
+            if (locking_script.chunks and len(locking_script.chunks) > 1 and locking_script.chunks[0].op == 0x00 and locking_script.chunks[1].op == 0x6a):
+                logger.info(f"  Found OP_FALSE OP_RETURN output at index {tx.outputs.index(tx_output)}.")
                 
                 # Extract all data chunks after the OP_RETURN opcode
                 # The .data attribute of the chunk contains the actual bytes pushed
-                data_pushes = [chunk.data for chunk in locking_script.chunks[1:] if chunk.data is not None]
+                data_pushes = [chunk.data for chunk in locking_script.chunks[2:] if chunk.data is not None]
                 
                 logger.info(f"  Successfully extracted {len(data_pushes)} data pushes.")
                 return data_pushes
                 
-        logger.warning("No OP_RETURN output found in the transaction.")
+        logger.warning("No OP_RETURN OP_RETURN output found in the transaction.")
         return []
 
     except Exception as e:
@@ -450,7 +456,8 @@ def extract_op_return_payload_correct_25_08_25(raw_tx_hex: str) -> List[bytes]:
                      OP_RETURN script. Returns an empty list if no OP_RETURN
                      output is found or an error occurs.
     """
-    logger.info("\n--- SIMULATION: Extracting OP_RETURN Payload from Transaction ---")
+    #TODO Make robust against missing OP_FALSE
+    logger.info("\n--- SIMULATION: Extracting OP_FALSE OP_RETURN Payload from Transaction ---")
     try:
         tx = Transaction.from_hex(raw_tx_hex)
         if tx is None:
@@ -461,13 +468,21 @@ def extract_op_return_payload_correct_25_08_25(raw_tx_hex: str) -> List[bytes]:
             locking_script = tx_output.locking_script
             script_bytes = bytes.fromhex(locking_script.hex())
 
-            if not script_bytes.startswith(bytes.fromhex("6a")): # OP_RETURN (0x6a)
+            start_index = -1
+
+            if script_bytes.startswith(bytes.fromhex("006a")): # OP_FALSE (0x00) OP_RETURN (0x6a)
+                start_index = 2
+                logger.info(f"  Found OP_FALSE OP_RETURN output at index {tx.outputs.index(tx_output)}.")
+            # Fall back to old pattern
+            elif script_bytes.startswith(bytes.fromhex("6a")):
+               start_index = 1
+               logger.info(f"  Found legacy OP_RETURN output at index {tx.outputs.index(tx_output)}.")
+            
+            if start_index == -1:
                 continue
 
-            logger.info(f"  Found OP_RETURN output at index {tx.outputs.index(tx_output)}.")
-            
             data_pushes = []
-            current_index = 1 # Start nach dem OP_RETURN-Opcode (0x6a)
+            current_index = start_index # Start after [OP_FALSE] OP_RETURN-Opcode (0x6a)
 
             while current_index < len(script_bytes):
                 # Lesen des Längen-Bytes (oder Opcode)
@@ -507,7 +522,7 @@ def extract_op_return_payload_correct_25_08_25(raw_tx_hex: str) -> List[bytes]:
             logger.info(f"  Successfully extracted {len(data_pushes)} data pushes.")
             return data_pushes
             
-        logger.warning("No OP_RETURN output found in the transaction.")
+        logger.warning("No OP_FALSE OP_RETURN output found in the transaction.")
         return []
 
     except Exception as e:
@@ -515,6 +530,7 @@ def extract_op_return_payload_correct_25_08_25(raw_tx_hex: str) -> List[bytes]:
         return []
 
 def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
+    # TODO clean up
     return extract_op_return_payload_correct_25_08_25(raw_tx_hex)
 
 def verify_ec_payload(payload: List[bytes], original_content: str) -> bool:
@@ -628,7 +644,8 @@ async def create_op_return_transaction(
         current_utxo_store_data: Dict,
         tx_store: Dict,
         f_tx_store: IO, 
-        note: Optional[str] = None
+        note: Optional[str] = None,
+        dry_run: bool = False
 ) -> tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict]]:
     """
     Creates a Bitcoin SV transaction with an OP_RETURN output and returns change.
@@ -640,8 +657,10 @@ async def create_op_return_transaction(
         original_audit_content_string (Str): The original string content for internal verification/hashing.
         network (Network): The bsv.Network object for the transaction.
         utxo_file_path (str): The file path for the UTXO store.
+        tx_store (Dict): The memory reference to store. Only store outside!
         tx_file_path (str): The file path for the transaction store.
         note (Optional[str]): An optional note to be added as a fourth data push to OP_RETURN.
+        dry_run (Bool): do not broadcast if true
     
     Returns:
          tuple[str | None, str | None, str | None, List[Dict], List[Dict]]:
@@ -653,7 +672,9 @@ async def create_op_return_transaction(
     # TODO: remove on success: current_utxo_store_data = wallet_manager.load_utxo_store(utxo_file_path)
     # TODO: remove on success: tx_store = wallet_manager.load_tx_store(tx_file_path)
 
-    available_utxos = [utxo for utxo in current_utxo_store_data["utxos"] if not utxo["used"] and utxo["satoshis"] >= Config.FEE_STRATEGY * 5]
+    MINIMUM_UTXO_VALUE = 546
+    available_utxos = [utxo for utxo in current_utxo_store_data["utxos"] if not utxo["used"] and utxo["satoshis"] >= MINIMUM_UTXO_VALUE]
+        #               Config.FEE_STRATEGY * 5]
     if not available_utxos:
         logger.error(f"No suitable UTXOs available for {recipient_address} to cover fees. Please fund the address.")
         return None, None, None, [], []
@@ -678,20 +699,19 @@ async def create_op_return_transaction(
         if raw_source_tx_hex is None:
             logger.warning(f"Warning: Raw transaction for UTXO {utxo['txid']} not in cache. Fetching from network.")
             raw_source_tx_hex = await blockchain_api.fetch_raw_transaction_hex(utxo['txid'])
-            if raw_source_tx_hex:
+
+            if not raw_source_tx_hex or raw_source_tx_hex == "0":
+                logger.warning(f"Skipping UTXO {utxo['txid']}:{utxo['vout']} due to failure to get source transaction hex.")
+                continue 
+
+            # only add when not yet in store
+            if not any(tx['txid'] == utxo['txid'] for tx in tx_store["transactions"]):
                 tx_store["transactions"].append({
                     "txid": utxo['txid'], 
                     "rawtx": raw_source_tx_hex,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
-                wallet_manager.save_tx_store(f_tx_store, tx_store)
-            else:
-                logger.warning(f"Skipping UTXO {utxo['txid']}:{utxo['vout']} due to failure to get source transaction hex.")
-                continue 
-        
-        if raw_source_tx_hex == "0": 
-            logger.warning(f"Raw transaction data for txid {utxo['txid']} is placeholder '0', cannot use for signing. Skipping.")
-            continue
+                # TODO Entfernen: wallet_manager.save_tx_store(f_tx_store, tx_store)
         
         source_tx_obj = Transaction.from_hex(raw_source_tx_hex)
         
@@ -714,8 +734,8 @@ async def create_op_return_transaction(
     
     logger.info(f"  Attempting to create transaction for content: '{original_audit_content_string}'")
 
-    # 3. Create the OP_RETURN output with correct OP_PUSHDATA logic
-    op_return_script_bytes = bytes.fromhex("6a") # OP_RETURN (0x6a)
+    # 3. Create the OP_FALSE OP_RETURN output with correct OP_PUSHDATA logic
+    op_return_script_bytes = bytes.fromhex("006a") # OP_FALSE (0x00) OP_RETURN (0x6a)
 
     for data_bytes in op_return_data_pushes:
         data_length = len(data_bytes)
@@ -734,12 +754,6 @@ async def create_op_return_transaction(
         
         op_return_script_bytes += data_bytes
     
-    # Add optional note if it exists
-    # if note:
-    #     note_bytes = note.encode('utf-8')
-    #     op_return_script_bytes += bytes.fromhex("014e") # Mode byte (N) plus length byte
-    #     op_return_script_bytes += bytes([len(note_bytes)])
-    #     op_return_script_bytes += note_bytes
 
 
     # Add optional note if it exists
@@ -798,6 +812,9 @@ async def create_op_return_transaction(
             logger.info(f"    Output {i}: Satoshis={output.satoshis}, Script ASM={output.locking_script.to_asm()}{is_op_return_flag}")
     logger.info("------------------------------------------------------------")
 
+    # temporary sign first to get real data
+    # tx.sign()
+    
     tx.fee(SatoshisPerKilobyte(value=Config.FEE_STRATEGY)) 
 
     # After tx.fee() has been called, retrieve the fee by summing inputs and subtracting outputs.
@@ -820,10 +837,105 @@ async def create_op_return_transaction(
     if change_output_satoshis < 1 and change_output_satoshis != 0: 
         logger.warning(f"Warning: Calculated change output ({change_output_satoshis} satoshis) is too low. It might be discarded by miners or not be a valid UTXO.")
 
+
+    if 0 < change_output_satoshis < 546: # 546 is the default dust limit for P2PKH
+        logger.error(f"DUST ERROR: The calculated change ({change_output_satoshis} satoshis) is below the dust limit. Aborting transaction.")
+        return None, None, None, [], []
+
+    if total_input_satoshis < calculated_fee:
+        logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_satoshis}, required for fee: {calculated_fee}.")
+        return None, None, None, [], []
+    
     tx.sign()
+
+   
+    '''
+    # manual calculation of fees from here
+    # size of signed Tx
+    signed_tx_size_bytes = len(tx.hex()) // 2
+
+    # calculate fee manually with  some buffer
+    estimated_fee = int((signed_tx_size_bytes / 1000) * Config.FEE_STRATEGY)
+    safety_buffer = 5  # Ein paar extra Satoshis als Puffer
+    calculated_fee = estimated_fee + safety_buffer
+
+
+    # calculate change
+    change_sats = total_input_satoshis - calculated_fee
+
+    # set value of change in tx
+    for output in tx.outputs:
+        if output.change:
+            output.satoshis = change_sats
+            # output.change = False  # TODO ATTENTION: THIS DISABLES THE LIB TO CHANGE IT AGAIN
+
+    tx.sign()
+    '''
+
+
+
+    '''
+    # 2. Dann die Gebühr berechnen, basierend auf der *tatsächlichen* Größe der signierten Transaktion.
+    tx.fee(SatoshisPerKilobyte(value=Config.FEE_STRATEGY))
+    '''
+
+
+    '''
+    total_output_satoshis = sum(output.satoshis for output in tx.outputs)
+    # calculated_fee = total_input_satoshis - total_output_satoshis
+    
+    
+
+    logger.info(f"Total Input Satoshis: {total_input_satoshis}")
+    logger.info(f"Total Output Satoshis (including OP_RETURN and change): {total_output_satoshis}")
+    logger.info(f"Expected fee: {total_input_satoshis - total_output_satoshis}")
+    logger.info(f"Final Calculated Fee: {calculated_fee} satoshis")
+
+    if total_input_satoshis < calculated_fee:
+        logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_satoshis}, required for fee: {calculated_fee}.")
+        return None, None, None, [], []
+    
+    change_output = next((o for o in tx.outputs if o.change), None)
+    change_sats = change_output.satoshis if change_output else 0
+    
+    if change_sats > 0 and change_sats < 546:
+        logger.warning(f"Warning: Final change output ({change_sats} satoshis) is below the dust threshold. The transaction may be rejected.")
+
+    '''
+
 
     logger.info(f"New Transaction ID: {tx.txid()}")
     logger.info(f"New Transaction Raw Hex: {tx.hex()}")
+
+
+
+    if dry_run:
+        # Finde den Change-Output, indem du nach dem Skript suchst, das zur Empfängeradresse passt
+        expected_change_script_hex = P2PKH().lock(recipient_address).hex()
+        change_output = next((o for o in tx.outputs if o.locking_script.hex() == expected_change_script_hex), None)
+        change_sats = change_output.satoshis if change_output else 0
+        
+        logger.info("\n--- DRY RUN ---")
+        logger.info(f"Final Calculated Fee: {calculated_fee} satoshis")
+        logger.info(f"Input Satoshis: {total_input_satoshis}")
+        logger.info(f"Change Output: {change_sats} satoshis")
+        
+        # Prüfen auf Dust-Limit
+        if change_sats > 0 and change_sats < 546:
+             logger.warning("DUST LIMIT WARNING: Change output is below the typical dust threshold of 546 satoshis.")
+        else:
+             logger.info("Change output appears to be safely above the dust limit.")
+             
+        logger.info("Transaction will NOT be broadcast. Exiting now.")
+        
+        # Beenden, bevor gesendet wird. broadcast_txid ist None, damit keine Logs geschrieben werden.
+        return tx.hex(), None, None, consumed_utxos_details, []
+
+
+
+
+
+
 
     logger.info(f"Adding raw transaction {tx.txid()} to tx_store (UTXO cache)...")
     tx_store["transactions"].append({
@@ -835,7 +947,7 @@ async def create_op_return_transaction(
             #"blockheight": None,         # Initialize blockheight as null
             #"merkle_proof": None         # Initialize merkle_proof as null
         })
-    wallet_manager.save_tx_store(f_tx_store, tx_store)
+    # TODO entfernen: wallet_manager.save_tx_store(f_tx_store, tx_store)
 
     broadcast_txid = await blockchain_api.broadcast_transaction(tx.hex())
     broadcast_timestamp = datetime.now(timezone.utc).isoformat() if broadcast_txid else None
@@ -868,7 +980,7 @@ async def create_op_return_transaction(
         return None, None, None, [], [] # Return empty lists for UTXO changes on failure
 
 
-DELAY_NEXT_MONITOR_REQUEST=1
+
 
 async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path: str, polling_interval_seconds: int = 30):
     """
@@ -909,11 +1021,13 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
          
 
         try:
-            with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX, timeout=5) as f:
-                
-                # Load the entire audit log, as this is our central source of truth for records and their status.
-                audit_log = load_audit_log(f)
-
+            try:
+                with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX, timeout=5) as f:
+                    
+                    # Load the entire audit log, as this is our central source of truth for records and their status.
+                    audit_log = load_audit_log(f)
+            except FileNotFoundError:
+                audit_log = [] # If the file doesn't exist, the log is empty
             
             # Filter records that have blockchain_record and whose status indicates they need monitoring.
             # This includes "broadcasted" (waiting for block), "broadcast_failed" (might retry or inspect),
@@ -960,14 +1074,14 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                         
                 # API Request (reminder Ensure low request rate)
                 tx_info = await blockchain_api.get_transaction_status_woc(txid)
-                await asyncio.sleep(DELAY_NEXT_MONITOR_REQUEST)
+                await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST)
 
                 if tx_info and tx_info.get("blockhash") and tx_info.get("blockheight"):
                     logger.info(f"    Audit record '{log_id}' (TXID {txid}) confirmed in block {tx_info['blockheight']} ({tx_info['blockhash']}).")
 
                     # API Request (reminder Ensure low request rate)        
                     merkle_proof_data = await blockchain_api.get_merkle_path(txid)
-                    await asyncio.sleep(DELAY_NEXT_MONITOR_REQUEST)
+                    await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST)
 
                     try:
                         with portalocker.Lock(Config.AUDIT_LOG_FILE,  "r+", flags=LOCK_EX, timeout=5) as f_audit, \
@@ -1052,8 +1166,12 @@ async def audit_record_verifier(log_id: str) -> bool:
     """
     logger.info(f"\n### AUDITOR VERIFICATION FOR LOG ID: {log_id} ###")
     
-    with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX) as f:  
-        audit_log = load_audit_log(f)
+    try:
+        with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX) as f:
+            audit_log = load_audit_log(f)
+    except FileNotFoundError:
+        logger.error(f"Audit log file '{Config.AUDIT_LOG_FILE}' not found. Cannot perform verification.")
+        return False
     
     record = next((r for r in audit_log if r.get("log_id") == log_id), None)
     if not record:
@@ -1267,8 +1385,12 @@ async def audit_all_records():
     """
     logger.info(f"\n### STARTING BATCH AUDIT OF ALL CONFIRMED RECORDS ###")
     
-    with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX) as f:
-        audit_log = load_audit_log(f)
+    try:
+        with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX) as f:
+            audit_log = load_audit_log(f)
+    except FileNotFoundError:
+        logger.info("No audit log file found. No records to audit.")
+        return
     
     # Filter for records that are marked as 'confirmed' and thus have all necessary info
     # for a full audit (txid, block_hash, merkle_proof).
