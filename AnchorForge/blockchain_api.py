@@ -249,6 +249,37 @@ async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
             print(f"Response Headers: {response.headers}")
 
             try:
+
+                #-- new code
+                try:
+                    response_data = response.json()
+                except json.JSONDecodeError:
+                    response_data = response.text
+
+                if isinstance(response_data, str):
+                    # Wenn es ein String ist, ist es entweder die TXID oder eine Fehlermeldung
+                    if response.status_code == 200 and response_data:
+                        print(f"Success: Transaction broadcasted with txid: {response_data}")
+                        return response_data
+                    else:
+                        # Der String ist eine Fehlermeldung
+                        print(f"Request failed: Status {response.status_code}, Error: {response_data}")
+                        return None
+                
+                elif isinstance(response_data, dict):
+                    # Wenn es ein Dictionary ist, suchen wir nach der txid oder einer Fehlermeldung
+                    if response.status_code == 200 and 'txid' in response_data:
+                        print(f"Success: Transaction broadcasted with txid: {response_data['txid']}")
+                        return response_data['txid']
+                    else:
+                        error_message = response_data.get('message', response_data.get('error', 'No specific error message provided'))
+                        print(f"Request failed: Status {response.status_code}, Error: {error_message}")
+                        return None
+                else:
+                    print(f"Error: Unexpected response format from API: {response.text}")
+                    return None
+                
+                '''
                 response_json = response.json()
                 print("Response Body (JSON):")
                 print(json.dumps(response_json, indent=2))
@@ -271,6 +302,10 @@ async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
                     error_message = response_json.get('message', response_json.get('error', 'No specific error message provided'))
                     print(f"Request failed: Status {response.status_code}, Error: {error_message}")
                     return None
+                '''
+
+
+
             except json.JSONDecodeError as e:
                 print(f"JSON parsing error: {e}")
                 print(f"Raw Response Body (Non-JSON): {response.text}")

@@ -281,7 +281,7 @@ async def create_working_utxos(recipient_address: str, utxo_value: int, num_utxo
     utxos_from_bank = await blockchain_api.fetch_utxos_for_address(str(bank_address))
 
     if not utxos_from_bank:
-        logger.info(f"No UTXOs found for bank address {bank_address}. Cannot create working UTXOs.")
+        logger.info(f"No UTXOs found for bank address {bank_address}. Please ensure the bank is funded and the UTXOs are confirmed.")
         return None
 
     tx_inputs = []
