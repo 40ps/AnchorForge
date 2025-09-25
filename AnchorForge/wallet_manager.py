@@ -12,6 +12,8 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 import logging
+import os
+
 import portalocker
 from portalocker import LOCK_EX
 
@@ -156,12 +158,29 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
     print(f"Initializing stores for address: {sender_address}")
     print(f"  Using UTXO store file: {utxo_file_path}")
 
+
+    # --- Robust File Handling: Ensure files exist before locking with "r+" ---
+    for path in [utxo_file_path, tx_file_path, used_utxo_file_path]:
+        if not os.path.exists(path):
+            print(f"File not found, creating empty store: {path}")
+            # Erstelle eine leere, aber gültige JSON-Struktur
+            initial_data = {}
+            if "used_utxo" in path:
+                initial_data = {"address": "", "network": "", "used_utxos": []}
+            elif "utxo_store" in path:
+                initial_data = {"address": "", "network": "", "utxos": []}
+            elif "tx_store" in path:
+                initial_data = {"address": "", "network": "", "transactions": []}
+            
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(initial_data, f, indent=4)
+
     # Fetch all UTXOs belonging to the sender's address
     utxos_from_woc = await blockchain_api.fetch_utxos_for_address(str(sender_address))
 
     if not utxos_from_woc:
-        print(f"No UTXOs found for address {sender_address}. Cannot create transaction.")
-        return None
+        print(f"No UTXOs found for address {sender_address}. Using existing local store.")
+        return
 
     # Ensure every UTXO has all expected keys
     formatted_utxos_for_store = []
@@ -175,7 +194,7 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
-
+    # --- Lock, Load, Process, and Save with the correct "r+" mode ---
     # 1. Lock tx_store
     # Initialize empty tx_store if it doesn't exist
     with portalocker.Lock(tx_file_path, "r+", flags=LOCK_EX, timeout=5) as f:
@@ -187,21 +206,21 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
                         "transactions": []}
         
         # Collect unique txids from utxos
-        existing_txids = {tx["txid"] for tx in tx_store["transactions"]}
+        existing_txids = {tx["txid"] for tx in tx_store.get("transactions",[])}
         new_txids_to_cache = {utxo["txid"] for utxo in formatted_utxos_for_store if utxo["txid"] not in existing_txids}
         
         # Add placeholder entries for new txids
         for txid_to_cache in new_txids_to_cache:
             raw_source_tx_hex = await blockchain_api.fetch_raw_transaction_hex(txid_to_cache)
-            if raw_source_tx_hex is None:
+            if raw_source_tx_hex:            
+                tx_store["transactions"].append({
+                    "txid": txid_to_cache,
+                    "rawtx": raw_source_tx_hex,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+            else:
+                # raw_source_tx_hex is None:
                 print(f"Skipping txid {txid_to_cache}, could not fetch raw Tx")
-                continue
-            
-            tx_store["transactions"].append({
-                "txid": txid_to_cache,
-                "rawtx": raw_source_tx_hex,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
         
         save_tx_store(f, tx_store)
     print(f"TX store cache populated with {len(new_txids_to_cache)} new raw transactions.")
@@ -209,7 +228,7 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
 
     # Populate and save used_utxo_store.json
     # 2. Lock used_utxo_store
-    with portalocker.Lock(used_utxo_file_path, "w", flags=LOCK_EX, timeout=5) as f:
+    with portalocker.Lock(used_utxo_file_path, "r+", flags=LOCK_EX, timeout=5) as f:
         used_store = load_used_utxo_store(f)
         if not used_store.get("address") or used_store["address"] != str(sender_address) or used_store["network"] != network_name:
             print(f"USED UTXO store being initialized/reset for address {sender_address}.")
@@ -224,6 +243,7 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
         utxo_store = load_utxo_store(f) 
         utxo_store["address"] = str(sender_address)
         utxo_store["network"] = network_name
+        # This will OVERWRITE the old utxos with the fresh list from the blockchain
         utxo_store["utxos"] = formatted_utxos_for_store
         save_utxo_store(f, utxo_store)
     print(f"UTXO store initialized with {len(formatted_utxos_for_store)} UTXOs.")
