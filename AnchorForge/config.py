@@ -101,11 +101,11 @@ class Config:
     if not all([PRIVATE_KEY_WIF, UTXO_STORE_KEY_WIF, PRIVATE_BANK_KEY_WIF, PRIVATE_SIGNING_KEY_WIF]):
         raise ValueError("One or more critical private keys are missing. Check your .env file.")
 
-# Example of how to use the Config class
-# from config import Config
-#
-# print(f"Fee Strategy: {Config.FEE_STRATEGY}")
-# print(f"Is Ignoring Rest: {Config.IGNORE_REST}")
-# print(f"Bank Private Key: {Config.PRIVATE_BANK_KEY_WIF}")
+
+
+# API Limits
+COINGECKO_API_MONTHLY_LIMIT = 10000
+
+
 
 
