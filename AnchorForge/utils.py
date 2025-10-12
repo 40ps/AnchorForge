@@ -26,7 +26,8 @@ from bsv.hash import sha256 # Import sha256 function directly from bsv.hash modu
 
 from config import Config
 
-API_COUNTER_FILE = "api_usage_counter.json"
+API_COUNTER_FILE = "api_usage_counter.json"  # To avoid overusing API
+STATUS_FILE = "coingecko_batch_status.json"  # for recovery mechanism
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,27 @@ def check_api_limit_exceeded(service_name: str, limit: int) -> bool:
     count = counter_data.get(f"{service_name}_monthly_count", 0)
     return count >= limit
 
+
+
+def read_batch_status() -> dict:
+    """
+    Reads the batch status file.
+    """
+    try:
+        with open(STATUS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # If file does not exist or is corrupt, return a default state
+        return {"total_requested": 0, "completed_count": 0, "status": "idle"}
+
+def write_batch_status(status_data: dict):
+    """
+    Writes data to the batch status file.
+    """
+    with open(STATUS_FILE, 'w') as f:
+        json.dump(status_data, f, indent=4)
+
+# -----
 
 def extract_testnet_address(locking_script_hex: str) -> str | None:
     """
