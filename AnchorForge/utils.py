@@ -1,9 +1,13 @@
-
+# utils.py
+# little helpers to simplify task for testing or extending the PoC
+# - output and queries on Transaction data
+# - API call history to avoid too many calls
 
 import logging
 from typing import Dict
 import httpx
 import json
+from datetime import datetime
 
 from bsv.hash import hash256 # Assuming hash256 is used by verify_block_hash
 from bsv import Transaction # Assuming Transaction is used by deserialize_and_print_transaction
@@ -22,8 +26,58 @@ from bsv.hash import sha256 # Import sha256 function directly from bsv.hash modu
 
 from config import Config
 
+API_COUNTER_FILE = "api_usage_counter.json"
 
 logger = logging.getLogger(__name__)
+
+def read_api_usage(service_name: str) -> dict:
+    """
+    Reads the API usage counter file and handles monthly reset.
+    """
+    try:
+        with open(API_COUNTER_FILE, 'r') as f:
+            counter_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # If file does not exist or is corrupt, create a new one
+        counter_data = {
+            f"{service_name}_monthly_count": 0,
+            "last_reset_date": datetime.now().strftime('%Y-%m-01')
+        }
+
+    # Check for month change to reset counter
+    last_reset = datetime.strptime(counter_data['last_reset_date'], '%Y-%m-%d')
+    if last_reset.month != datetime.now().month or last_reset.year != datetime.now().year:
+        counter_data[f"{service_name}_monthly_count"] = 0
+        counter_data['last_reset_date'] = datetime.now().strftime('%Y-%m-01')
+        _write_api_usage(counter_data)
+        
+    return counter_data
+
+def _write_api_usage(data: dict):
+    """
+    Internal function to write data to the counter file.
+    """
+    with open(API_COUNTER_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
+def increment_api_usage(service_name: str):
+    """
+    Increments the usage counter for a given service.
+    """
+    counter_data = read_api_usage(service_name)
+    counter_key = f"{service_name}_monthly_count"
+    counter_data[counter_key] = counter_data.get(counter_key, 0) + 1
+    _write_api_usage(counter_data)
+
+def check_api_limit_exceeded(service_name: str, limit: int) -> bool:
+    """
+    Checks if the API usage limit for a service has been exceeded.
+    Returns True if limit is reached, False otherwise.
+    """
+    counter_data = read_api_usage(service_name)
+    count = counter_data.get(f"{service_name}_monthly_count", 0)
+    return count >= limit
+
 
 def extract_testnet_address(locking_script_hex: str) -> str | None:
     """
