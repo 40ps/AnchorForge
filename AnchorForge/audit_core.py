@@ -1001,6 +1001,10 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
     initial_run_completed = False  
 
     while True: # Loop indefinitely to keep monitoring
+         # --- Check for pause/stop commands at the start of each cycle ---
+        if await utils.check_process_controls('monitor'):
+            break # Exit the loop if stop is requested
+
         if initial_run_completed:
             try:
                 chain_info = await blockchain_api.get_chain_info_woc()
@@ -1146,8 +1150,9 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
             except Exception as e:
                 logger.error(f"Could not fetch block height after initial run:{e}")
 
+        logging.info(f"  ... sleeping for {polling_interval_seconds} seconds.")
         await asyncio.sleep(polling_interval_seconds)
-
+    logging.info("--- Monitor worker loop has been stopped gracefully. ---")
 
 async def audit_record_verifier(log_id: str) -> bool:
     """
