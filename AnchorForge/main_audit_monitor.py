@@ -2,13 +2,16 @@
 import asyncio
 import logging
 import sys
+import os
+import argparse  # We'll use argparse for cleaner argument handling
 
 from config import Config
 import audit_core
+import utils
 from wallet_manager import _get_filename_for_address
 from bsv import PrivateKey
 
-# Configure logging
+# Configure logging (remains the same)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -18,16 +21,18 @@ logging.basicConfig(
     ]
 )
 
-async def main_monitor(duration_minutes: int):
+async def main_monitor(duration_minutes: int | None):
     """
-    Starts the transaction monitor for a specified duration.
-    
-    Args:
-        duration_minutes (int): The duration in minutes for which the monitor should run.
+    Starts the transaction monitor.
+    - If duration_minutes is provided, it runs for that specific time.
+    - If duration_minutes is None, it runs as a continuous service.
     """
-    logging.info(f"\n--- Starting Audit Monitor for {duration_minutes} minutes ---")
+    if duration_minutes:
+        logging.info(f"\n--- Starting Audit Monitor in DURATION mode for {duration_minutes} minutes ---")
+    else:
+        logging.info(f"\n--- Starting Audit Monitor in CONTINUOUS mode ---")
     
-    # Generate dynamic file paths based on the main UTXO store key
+    # Generate dynamic file paths (remains the same)
     try:
         priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
         sender_address = priv_key.address()
@@ -37,33 +42,51 @@ async def main_monitor(duration_minutes: int):
         logging.error(f"Failed to get address for dynamic file paths: {e}")
         return
 
-    monitor_task = asyncio.create_task(
-        audit_core.monitor_pending_transactions(
-            utxo_file_path, 
-            used_utxo_file_path, 
-            polling_interval_seconds=Config.MONITOR_POLLING_INTERVAL
-        )
-    )
-    
-    # Run the monitor for the specified duration
-    await asyncio.sleep(duration_minutes * 60)
-    
-    # Stop the monitor gracefully
-    monitor_task.cancel()
+    # --- Logic to switch between modes ---
     try:
-        await monitor_task
-    except asyncio.CancelledError:
-        logging.info("Transaction monitor task cancelled gracefully.")
+        if duration_minutes:
+            # --- DURATION MODE ---
+            monitor_task = asyncio.create_task(
+                audit_core.monitor_pending_transactions(
+                    utxo_file_path, 
+                    used_utxo_file_path
+                )
+            )
+            await asyncio.sleep(duration_minutes * 60)
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                logging.info("Monitor task cancelled gracefully after duration.")
         
-    logging.info("\n--- Audit Monitor finished ---")
+        else:
+            # --- CONTINUOUS MODE ---
+            while True:
+                if await utils.check_process_controls('monitor'):
+                    break  # Exit loop if stop is requested
+
+                await audit_core.monitor_pending_transactions(
+                    utxo_file_path, 
+                    used_utxo_file_path
+                )
+                await asyncio.sleep(Config.MONITOR_POLLING_INTERVAL)
+
+    except asyncio.CancelledError:
+        # This handles Ctrl+C gracefully in both modes
+        pass
+        
+    logging.info("\n--- Audit Monitor has been stopped. ---")
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        try:
-            duration = int(sys.argv[1])
-            asyncio.run(main_monitor(duration))
-        except ValueError:
-            logging.error("Invalid argument. Please provide an integer for the duration in minutes.")
-    else:
-        logging.info("python  main_audit_monitor x to start it for x minutes")
-        asyncio.run(main_monitor(60))
+    parser = argparse.ArgumentParser(description="Run the Audit Monitor.")
+    parser.add_argument(
+        '-d', '--duration', 
+        type=int, 
+        help="Optional: Run the monitor for a specific duration in minutes."
+    )
+    args = parser.parse_args()
+
+    try:
+        asyncio.run(main_monitor(args.duration))
+    except KeyboardInterrupt:
+        logging.info("\n--- Audit Monitor stopped by user (Ctrl+C). ---")

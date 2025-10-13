@@ -103,8 +103,13 @@ class Config:
 
 
 
-# API Limits
-COINGECKO_API_MONTHLY_LIMIT = 10000
+    # --- Backup Configuration ---
+    BACKUP_DIR = "backup"
+    BACKUP_INTERVAL = 100
+
+    # API Limits
+    COINGECKO_API_MONTHLY_LIMIT = 10000
+
 
 
 

@@ -8,6 +8,9 @@ from typing import Dict
 import httpx
 import json
 from datetime import datetime
+import shutil
+import os
+import asyncio
 
 from bsv.hash import hash256 # Assuming hash256 is used by verify_block_hash
 from bsv import Transaction # Assuming Transaction is used by deserialize_and_print_transaction
@@ -80,7 +83,7 @@ def check_api_limit_exceeded(service_name: str, limit: int) -> bool:
     return count >= limit
 
 
-
+# --- Backup support ---
 def read_batch_status() -> dict:
     """
     Reads the batch status file.
@@ -99,7 +102,67 @@ def write_batch_status(status_data: dict):
     with open(STATUS_FILE, 'w') as f:
         json.dump(status_data, f, indent=4)
 
-# -----
+def create_backup(files_to_backup: list, backup_dir: str):
+    """
+    Creates a timestamped backup of a list of files.
+
+    Args:
+        files_to_backup (list): A list of file paths to be backed up.
+        backup_dir (str): The directory where backups will be stored.
+    """
+    try:
+        # Ensure the backup directory exists
+        os.makedirs(backup_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        logging.info(f"--- Creating backup at {timestamp} ---")
+
+        for file_path in files_to_backup:
+            if not os.path.exists(file_path):
+                logging.warning(f"Backup skipped for non-existent file: {file_path}")
+                continue
+
+            # Construct the destination path with a timestamp
+            file_name = os.path.basename(file_path)
+            backup_file_path = os.path.join(backup_dir, f"{file_name}.{timestamp}.bak")
+            
+            # Copy the file
+            shutil.copy2(file_path, backup_file_path)
+            logging.info(f"  Successfully backed up '{file_name}' to '{backup_file_path}'")
+
+    except Exception as e:
+        logging.error(f"An error occurred during the backup process: {e}")
+
+
+
+# 
+
+async def check_process_controls(process_name: str):
+    """
+    Checks for pause and stop flag files for a given process.
+    Returns True if the process should stop, False otherwise.
+    """
+    pause_flag = f"{process_name}.pause.flag"
+    stop_flag = f"{process_name}.stop.flag"
+
+    # Check for pause flag
+    if os.path.exists(pause_flag):
+        logging.info(f"'{pause_flag}' detected. Pausing process. To resume, run 'control_process.py {process_name} resume'.")
+        while os.path.exists(pause_flag):
+            await asyncio.sleep(5) # Check every 5 seconds
+        logging.info(f"'{pause_flag}' removed. Resuming process.")
+
+    # Check for stop flag
+    if os.path.exists(stop_flag):
+        logging.info(f"'{stop_flag}' detected. Stopping process gracefully.")
+        try:
+            os.remove(stop_flag) # Clean up the flag file
+        except OSError as e:
+            logging.error(f"Error removing {stop_flag}: {e}")
+        return True # Signal to stop
+
+    return False # Signal to continue
+# -------------------------------------------------------------
 
 def extract_testnet_address(locking_script_hex: str) -> str | None:
     """

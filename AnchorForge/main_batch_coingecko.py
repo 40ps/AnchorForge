@@ -1,0 +1,372 @@
+# main_batch_coingecko.py
+'''
+This program serves as the entry point for logging a single audit event 
+based on external data fetched from the CoinGecko API.
+python main_batch_coingecko.py
+python main_batch_coingecko.py --count 10
+python main_batch_coingecko.py --count 1000
+python main_batch_coingecko.py --count 1000 --reset   # starts a complete new batch even with some already processed
+python main_batch_coingecko.py --backup
+pause.flag + stop.flag
+
+
+Um 5 Events im Trockenlauf zu testen (ohne zu broadcasten):
+python main_batch_coingecko.py --count 5 --dry-run
+'''
+
+import asyncio
+import logging
+import json
+from typing import List, Dict
+from datetime import datetime, timezone
+import uuid
+import os
+import sys
+import argparse
+import portalocker
+from portalocker import LOCK_EX
+
+import data_services # Import our new data service module
+
+from config import Config
+import wallet_manager
+import bank_functions
+import audit_core
+import key_x509_manager
+import utils 
+from bsv import PrivateKey
+from bsv.hash import sha256
+
+# Configure logging for this specific program
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(Config.LOG_FILE, mode='a', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+
+async def log_coingecko_price_event(dry_run: bool = False):
+    """
+    Orchestrates fetching data from CoinGecko and creating a single audit record.
+    """
+    logging.info(f"\n--- Starting CoinGecko Price Log Process ---")
+
+    # --- Block 1: Fetch and prepare data source ---
+
+    # Capture the timestamp just before the API call
+    query_timestamp_utc = datetime.now(timezone.utc).isoformat()
+
+    price_data_from_api = await data_services.get_coingecko_bsv_price()
+
+    if not price_data_from_api:
+        logging.error("Could not fetch price data from CoinGecko. Aborting process.")
+        return
+    
+    # Extract the server's timestamp and convert it from Unix time to ISO format
+    # The API returns a nested structure, so we access it directly
+    server_unix_timestamp = price_data_from_api.get('bitcoin-cash-sv', {}).get('last_updated_at')
+    server_iso_timestamp = datetime.fromtimestamp(server_unix_timestamp, tz=timezone.utc).isoformat() if server_unix_timestamp else None
+
+
+    # Format the data for anchoring, including the source attribution
+    data_to_anchor = {
+        "client_query_timestamp_utc": query_timestamp_utc,
+        "server_last_updated_utc": server_iso_timestamp,
+        "price_data": {
+            "bitcoin-cash-sv": {
+                "eur": price_data_from_api.get('bitcoin-cash-sv', {}).get('eur')
+            }
+        },
+        "source": "Powered by CoinGecko API"
+    }
+    
+    # Convert dict to a formatted JSON string for the audit log process
+    data_content_string = json.dumps(data_to_anchor, indent=4)
+    
+    # Define metadata for the local audit record
+    record_note_content = "Live price data for BSV/EUR from CoinGecko."
+    
+    logging.info(f"\n--- New Audit Content ---")
+    logging.info(f"  Content to be logged: '{data_content_string[:200]}...'")
+    logging.info(f"\n--- New Audit Note ---")
+    logging.info(f"  Content to be noted: '{record_note_content}'")
+    
+    # For this specific logger, we don't need a transaction note
+    tx_note_content = None
+
+    # --- Block 2: prepare file paths ---
+    priv_key_funding = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
+    sender_address = priv_key_funding.address()
+    utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME)
+    tx_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "tx_store")
+    used_utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "used_utxo_store")
+
+    # --- Block 3: Atomic operations: lock, load, process, store ---
+    try:
+        # The file mode "r+" is essential for safe read/write operations
+        with portalocker.Lock(Config.AUDIT_LOG_FILE, "r+", flags=LOCK_EX, timeout=5) as f_audit, \
+             portalocker.Lock(tx_file_path, "r+", flags=LOCK_EX, timeout=5) as f_tx, \
+             portalocker.Lock(used_utxo_file_path, "r+", flags=LOCK_EX, timeout=5) as f_used, \
+             portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5) as f_utxo:
+
+            # 1. load all stores securely
+            audit_log = audit_core.load_audit_log(f_audit)
+            tx_store = wallet_manager.load_tx_store(f_tx)
+            used_store = wallet_manager.load_used_utxo_store(f_used)
+            store = wallet_manager.load_utxo_store(f_utxo)
+  
+            # 2. create Payloads and Audit-Record in memory
+            # This part is largely the same as in the original script
+            assert Config.PRIVATE_SIGNING_KEY_WIF is not None
+            ec_payload = audit_core.build_audit_payload(data_content_string, Config.PRIVATE_SIGNING_KEY_WIF)
+            
+            x509_payload = []
+            x509_key_label = 'anchor_example_certificate'
+            cert_info = key_x509_manager.get_x509_key_pair_by_label(x509_key_label)
+            
+            if cert_info:
+                private_x509_key_pem = cert_info.get('private_key_pem')
+                x509_cert_pem = cert_info.get('certificate_pem')
+                if private_x509_key_pem and x509_cert_pem:
+                    x509_payload = audit_core.build_x509_audit_payload(data_content_string, private_x509_key_pem, x509_cert_pem)
+
+            op_return_payload_for_tx = ec_payload + x509_payload
+            
+            audit_record_entry = {
+                "log_id": str(uuid.uuid4()),
+                "original_audit_content": data_content_string,
+                "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
+                "format": audit_core.AUDIT_RECORD_FORMAT_V1,
+                "blockchain_record": {
+                    "txid": None, "raw_transaction_hex": None, "status": "pending_creation",
+                    "data_hash_pushed_to_op_return": ec_payload[1].hex() if ec_payload else None,
+                    # ... (and so on, same as original script)
+                }, 
+                "notes": record_note_content
+            }
+            
+            # 3. Create Transaction
+            assert Config.UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF is none"
+            tx_hex_returned, broadcast_timestamp_str, broadcast_txid, \
+            consumed_utxos_details, new_utxos_details = await audit_core.create_op_return_transaction(
+                spending_key_wif=Config.UTXO_STORE_KEY_WIF, 
+                recipient_address=str(sender_address),
+                op_return_data_pushes=op_return_payload_for_tx,
+                original_audit_content_string=data_content_string,
+                network=Config.ACTIVE_NETWORK_BSV,
+                current_utxo_store_data=store,
+                tx_store=tx_store,
+                f_tx_store=f_tx,
+                note=tx_note_content,
+                dry_run=dry_run
+            )
+
+            # 4. if tx success, write all changes into stores
+            if tx_hex_returned and broadcast_txid:
+                logging.info(f"Transaction created & broadcasted: {broadcast_txid}")
+                
+                audit_record_entry["blockchain_record"].update({
+                    "txid": broadcast_txid,
+                    "raw_transaction_hex": tx_hex_returned,
+                    "status": "broadcasted",
+                    "timestamp_broadcasted_utc": broadcast_timestamp_str
+                })
+                audit_log.append(audit_record_entry)
+
+                for consumed_utxo in consumed_utxos_details:
+                    store["utxos"] = [u for u in store["utxos"] if not (u["txid"] == consumed_utxo["txid"] and u["vout"] == consumed_utxo["vout"])]
+                    consumed_utxo.update({"used": True, "used_in_txid": broadcast_txid, "used_timestamp": datetime.now(timezone.utc).isoformat()})
+                    used_store["used_utxos"].append(consumed_utxo)
+                
+                store["utxos"].extend(new_utxos_details)
+                
+                # 5. write all changed stores securely
+                wallet_manager.save_utxo_store(f_utxo, store)
+                wallet_manager.save_used_utxo_store(f_used, used_store)
+                audit_core.save_audit_log(f_audit, audit_log)
+                wallet_manager.save_tx_store(f_tx, tx_store)
+                
+                logging.info("All local stores updated successfully.")
+                return True
+
+            else:
+                audit_record_entry["blockchain_record"]["status"] = "tx_creation_failed"
+                audit_log.append(audit_record_entry)
+                audit_core.save_audit_log(f_audit, audit_log)
+                logging.error(f"Failed to create transaction for audit record '{audit_record_entry['log_id']}'.")
+                return False
+
+    except portalocker.exceptions.LockException as e:
+        logging.error(f"Could not acquire lock for processing, another process might be running: {e}")
+        return False
+
+    logging.info("\n--- Finished CoinGecko Price Log Process ---")
+
+
+
+async def main():
+    """
+    Main function to control the batch logging process.
+    It now includes status tracking, resume capabilities, and periodic backups
+    """
+    parser = argparse.ArgumentParser(
+        description="Fetches BSV/EUR price from CoinGecko in a batch and creates audit records."
+    )
+    
+    parser.add_argument(
+        '-c', '--count',
+        type=int, 
+        # enable if backup option is removed required=True,  # Count is now mandatory to start a specific batch
+        help="The number of price events to log."
+    )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help="Perform a dry run: build transactions but do not broadcast."
+    )
+    parser.add_argument(
+        '--reset',
+        action='store_true',
+        help="Reset the batch status and start from the beginning."
+    )
+    parser.add_argument(
+        '--backup',
+        action='store_true',
+        help="Immediately create a backup of the current state files and exit."
+    )
+
+    args = parser.parse_args()
+
+    if args.backup:
+        logging.info("--- Manual Backup Triggered ---")
+        
+        priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
+        address = priv_key.address()
+        
+        utxo_file = wallet_manager._get_filename_for_address(str(address), Config.ACTIVE_NETWORK_NAME)
+        tx_file = utxo_file.replace("utxo_store", "tx_store")
+        used_utxo_file = utxo_file.replace("utxo_store", "used_utxo_store")
+
+        files_to_backup = [
+            Config.AUDIT_LOG_FILE,
+            utxo_file,
+            tx_file,
+            used_utxo_file
+        ]
+        
+        utils.create_backup(files_to_backup, Config.BACKUP_DIR)
+        logging.info("--- Manual Backup Complete. Exiting. ---")
+        return # Exit the program after backup
+
+    # --- Count becomes mandatory only if not doing a backup ---
+    if not args.count:
+        parser.error("the following arguments are required: -c/--count (unless you are using --backup)")
+
+    
+    # --- Status Management ---
+    status_data = utils.read_batch_status()
+
+    if args.reset or status_data['status'] == 'completed' or status_data['total_requested'] != args.count:
+        status_data = {
+            "total_requested": args.count,
+            "completed_count": 0,
+            "status": "pending"
+        }
+        utils.write_batch_status(status_data)
+        logging.info("Batch status has been reset. Starting a new batch.")
+    
+    start_index = status_data['completed_count']
+    total_requested = status_data['total_requested']
+
+
+    if start_index >= total_requested:
+        logging.info("Batch has already been completed. Use --reset to start a new one.")
+        return
+
+    logging.info(f"--- Starting Batch Run: Attempting to log {total_requested} events. ---")
+    logging.info(f"Resuming from event {start_index + 1}.")
+
+    status_data['status'] = 'running'
+    utils.write_batch_status(status_data)
+
+    successful_logs = 0
+    failed_logs = 0
+
+    for i in range(start_index, total_requested):
+        logging.info(f"\n>>> Processing event {i + 1} of {total_requested} <<<")
+        
+        success = await log_coingecko_price_event(dry_run=args.dry_run)
+        
+        if success:
+            successful_logs += 1
+            # Update status file IMMEDIATELY after a successful log
+            status_data['completed_count'] += 1
+            utils.write_batch_status(status_data)
+            logging.info(f"Event {i + 1} logged successfully. Progress: {status_data['completed_count']}/{total_requested}")
+
+            # --- CHECKPOINT: Trigger backup at the specified interval ---
+            if status_data['completed_count'] % Config.BACKUP_INTERVAL == 0:
+                logging.info(f"Reached backup interval at {status_data['completed_count']} logs.")
+                
+                # We need to get the current wallet file paths to back them up
+                priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
+                address = priv_key.address()
+                
+                utxo_file = wallet_manager._get_filename_for_address(str(address), Config.ACTIVE_NETWORK_NAME)
+                tx_file = utxo_file.replace("utxo_store", "tx_store")
+                used_utxo_file = utxo_file.replace("utxo_store", "used_utxo_store")
+
+                files_to_backup = [
+                    Config.AUDIT_LOG_FILE,
+                    utxo_file,
+                    tx_file,
+                    used_utxo_file
+                ]
+                
+                utils.create_backup(files_to_backup, Config.BACKUP_DIR)
+
+        else:
+            failed_logs += 1
+            logging.error(f"Failed to log event {i + 1}. The process will be stopped. Please check the logs and restart.")
+            status_data['status'] = 'failed'
+            utils.write_batch_status(status_data)
+            break # Stop the loop on the first failure to allow for investigation
+        
+
+ # --- Check for command files (pause or stop) ---
+        if os.path.exists('pause.flag'):
+            logging.info("'pause.flag' detected. Pausing process. To resume, delete the 'pause.flag' file.")
+            print(">>> PAUSE MODE <<<")
+
+            while os.path.exists('pause.flag'):
+                await asyncio.sleep(5) # Check every 5 seconds
+            logging.info("'pause.flag' removed. Resuming process.")
+
+        if os.path.exists('stop.flag'):
+            logging.info("'stop.flag' detected. Stopping batch process gracefully after this iteration.")
+            try:
+                os.remove('stop.flag') # Clean up the flag file
+            except OSError as e:
+                logging.error(f"Error removing stop.flag: {e}")
+            break # Exit the main for-loop
+
+        # Pause between requests to respect the API rate limit, but not after the last one
+        if i < total_requested - 1:
+            logging.info(f"Waiting for 3 seconds before next request...")
+            await asyncio.sleep(3)
+
+
+    if status_data['completed_count'] == total_requested:
+        status_data['status'] = 'completed'
+        utils.write_batch_status(status_data)
+        logging.info("Batch successfully completed.")
+
+    logging.info(f"\n--- Batch Run Finished ---")
+    logging.info(f"Total Successful Logs: {successful_logs}")
+    logging.info(f"Total Failed Logs: {failed_logs}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
