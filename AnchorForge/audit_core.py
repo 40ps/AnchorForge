@@ -1058,11 +1058,15 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                             
                                 if merkle_proof_data:
                                     blockchain_rec["merkle_proof_data"] = merkle_proof_data
+                                    # --- Calculate and store the size of the Merkle proof ---
+                                    merkle_proof_size_bytes = len(json.dumps(merkle_proof_data).encode('utf-8'))
+                                    blockchain_rec["merkle_proof_size_bytes"] = merkle_proof_size_bytes
+
                                     logger.info(f"    Merkle path for '{log_id}' saved to audit_log.")
                                 else:
                                     logger.warning(f"    Could not fetch Merkle path for confirmed record '{log_id}'. Marking as confirmed but incomplete proof.")
                                     blockchain_rec["merkle_proof_data"] = {"error": "Merkle proof unavailable"}
-
+                                    blockchain_rec["merkle_proof_size_bytes"] = None # Also explicitly set size to None
 
                             
                                 # Update UTXO store for newly created UTXOs in this transaction (height)
