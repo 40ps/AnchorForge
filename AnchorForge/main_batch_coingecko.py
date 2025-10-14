@@ -21,6 +21,7 @@ from typing import List, Dict
 from datetime import datetime, timezone
 import uuid
 import os
+import time
 import sys
 import argparse
 import portalocker
@@ -233,7 +234,7 @@ async def log_coingecko_price_event(dry_run: bool = False):
 async def main():
     """
     Main function to control the batch logging process.
-    It now includes status tracking, resume capabilities, and periodic backups
+    It now includes status tracking, resume capabilities, and periodic backups, and a final summary.
     """
     parser = argparse.ArgumentParser(
         description="Fetches BSV/EUR price from CoinGecko in a batch and creates audit records."
@@ -312,10 +313,15 @@ async def main():
     logging.info(f"--- Starting Batch Run: Attempting to log {total_requested} events. ---")
     logging.info(f"Resuming from event {start_index + 1}.")
 
+    # --- Record start time ---
+    start_time = time.time()
+
+
     status_data['status'] = 'running'
     utils.write_batch_status(status_data)
 
-    successful_logs = 0
+
+    successful_logs_this_run = 0
     failed_logs = 0
 
     for i in range(start_index, total_requested):
@@ -324,7 +330,7 @@ async def main():
         success = await log_coingecko_price_event(dry_run=args.dry_run)
         
         if success:
-            successful_logs += 1
+            successful_logs_this_run += 1
             # Update status file IMMEDIATELY after a successful log
             status_data['completed_count'] += 1
             utils.write_batch_status(status_data)
@@ -381,15 +387,35 @@ async def main():
             logging.info(f"Waiting for 3 seconds before next request...")
             await asyncio.sleep(3)
 
+    # --- Record end time and calculate duration ---
+    end_time = time.time()
+    duration_seconds = end_time - start_time
+    duration_minutes = duration_seconds / 60
 
+    # --- Final status update
     if status_data['completed_count'] == total_requested:
         status_data['status'] = 'completed'
         utils.write_batch_status(status_data)
         logging.info("Batch successfully completed.")
 
-    logging.info(f"\n--- Batch Run Finished ---")
-    logging.info(f"Total Successful Logs: {successful_logs}")
-    logging.info(f"Total Failed Logs: {failed_logs}")
+    # --- Generate and print the final summary ---
+    summary = (
+        f"\n--- Batch Run Summary ---\n"
+        f"Status: {status_data['status'].upper()}\n"
+        f"Total Events Requested: {total_requested}\n"
+        f"Total Events Completed: {status_data['completed_count']}\n"
+        f"  - Succeeded in this run: {successful_logs_this_run}\n"
+        f"  - Failed in this run: {failed_logs}\n"
+        f"--------------------------\n"
+        f"Start Time: {datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"End Time:   {datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Total Duration: {duration_seconds:.2f} seconds ({duration_minutes:.2f} minutes)\n"
+        f"--------------------------"
+    )
+    
+    print(summary) # Print summary to console
+    logging.info(f"[BATCH_SUMMARY] {json.dumps(status_data)}") # Log final status for machine parsing
+    logging.info(summary) # Log human-readable summary to file
 
 
 if __name__ == "__main__":
