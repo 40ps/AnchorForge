@@ -646,7 +646,7 @@ async def create_op_return_transaction(
         f_tx_store: IO, 
         note: Optional[str] = None,
         dry_run: bool = False
-) -> tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict]]:
+) -> tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict], Optional[int]]:
     """
     Creates a Bitcoin SV transaction with an OP_RETURN output and returns change.
 
@@ -663,8 +663,8 @@ async def create_op_return_transaction(
         dry_run (Bool): do not broadcast if true
     
     Returns:
-         tuple[str | None, str | None, str | None, List[Dict], List[Dict]]:
-            Now returns (raw_tx_hex, timestamp_broadcasted, txid, consumed_utxos_details, new_utxos_details).
+        tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict], Optional[int]]:
+            Now returns (raw_tx_hex, timestamp_broadcasted, txid, consumed_utxos_details, new_utxos_details, calculated_fee).
     """
     logger.info(f"\n--- Creating OP_RETURN Transaction from {recipient_address} ---")
     
@@ -677,7 +677,7 @@ async def create_op_return_transaction(
         #               Config.FEE_STRATEGY * 5]
     if not available_utxos:
         logger.error(f"No suitable UTXOs available for {recipient_address} to cover fees. Please fund the address.")
-        return None, None, None, [], []
+        return None, None, None, [], [], None
 
     # 2. prepare transaction inputs from all available UTXO until sufficient funds
     tx_inputs = []
@@ -730,7 +730,7 @@ async def create_op_return_transaction(
 
     if not tx_inputs:
         logger.warning(f"No usable UTXOs found for address {recipient_address} after fetching source transactions. Cannot create transaction.")
-        return None, None, None, [], []
+        return None, None, None, [], [], None
     
     logger.info(f"  Attempting to create transaction for content: '{original_audit_content_string}'")
 
@@ -750,7 +750,7 @@ async def create_op_return_transaction(
             op_return_script_bytes += bytes.fromhex("4e") + data_length.to_bytes(4, byteorder='little')
         else:
             logger.error("Data push is too large for a valid script.")
-            return None, None, None, [], []
+            return None, None, None, [], [], None
         
         op_return_script_bytes += data_bytes
     
@@ -775,7 +775,7 @@ async def create_op_return_transaction(
                 op_return_script_bytes += bytes.fromhex("4e") + data_length.to_bytes(4, byteorder='little')
             else:
                 logger.error("Note data push is too large for a valid script.")
-                return None, None, None, [], []
+                return None, None, None, [], [], None
 
             op_return_script_bytes += data_bytes
 
@@ -831,7 +831,7 @@ async def create_op_return_transaction(
     # The SDK handles the change output automatically, so we just need to ensure inputs cover it.
     if total_input_satoshis < calculated_fee:
         logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_satoshis}, required for fee: {calculated_fee}.")
-        return None, None, None, [], []
+        return None, None, None, [], [], calculated_fee
     
     change_output_satoshis = tx_output_change.satoshis
     if change_output_satoshis < 1 and change_output_satoshis != 0: 
@@ -840,67 +840,17 @@ async def create_op_return_transaction(
 
     if 0 < change_output_satoshis < 546: # 546 is the default dust limit for P2PKH
         logger.error(f"DUST ERROR: The calculated change ({change_output_satoshis} satoshis) is below the dust limit. Aborting transaction.")
-        return None, None, None, [], []
+        return None, None, None, [], [], None
 
     if total_input_satoshis < calculated_fee:
         logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_satoshis}, required for fee: {calculated_fee}.")
-        return None, None, None, [], []
+        return None, None, None, [], [], None
     
     tx.sign()
 
    
     '''
-    # manual calculation of fees from here
-    # size of signed Tx
-    signed_tx_size_bytes = len(tx.hex()) // 2
-
-    # calculate fee manually with  some buffer
-    estimated_fee = int((signed_tx_size_bytes / 1000) * Config.FEE_STRATEGY)
-    safety_buffer = 5  # Ein paar extra Satoshis als Puffer
-    calculated_fee = estimated_fee + safety_buffer
-
-
-    # calculate change
-    change_sats = total_input_satoshis - calculated_fee
-
-    # set value of change in tx
-    for output in tx.outputs:
-        if output.change:
-            output.satoshis = change_sats
-            # output.change = False  # TODO ATTENTION: THIS DISABLES THE LIB TO CHANGE IT AGAIN
-
-    tx.sign()
-    '''
-
-
-
-    '''
-    # 2. Dann die Gebühr berechnen, basierend auf der *tatsächlichen* Größe der signierten Transaktion.
-    tx.fee(SatoshisPerKilobyte(value=Config.FEE_STRATEGY))
-    '''
-
-
-    '''
-    total_output_satoshis = sum(output.satoshis for output in tx.outputs)
-    # calculated_fee = total_input_satoshis - total_output_satoshis
-    
-    
-
-    logger.info(f"Total Input Satoshis: {total_input_satoshis}")
-    logger.info(f"Total Output Satoshis (including OP_RETURN and change): {total_output_satoshis}")
-    logger.info(f"Expected fee: {total_input_satoshis - total_output_satoshis}")
-    logger.info(f"Final Calculated Fee: {calculated_fee} satoshis")
-
-    if total_input_satoshis < calculated_fee:
-        logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_satoshis}, required for fee: {calculated_fee}.")
-        return None, None, None, [], []
-    
-    change_output = next((o for o in tx.outputs if o.change), None)
-    change_sats = change_output.satoshis if change_output else 0
-    
-    if change_sats > 0 and change_sats < 546:
-        logger.warning(f"Warning: Final change output ({change_sats} satoshis) is below the dust threshold. The transaction may be rejected.")
-
+    moved code to create_op_return_feekram.py for history
     '''
 
 
@@ -929,7 +879,7 @@ async def create_op_return_transaction(
         logger.info("Transaction will NOT be broadcast. Exiting now.")
         
         # Beenden, bevor gesendet wird. broadcast_txid ist None, damit keine Logs geschrieben werden.
-        return tx.hex(), None, None, consumed_utxos_details, []
+        return tx.hex(), None, None, consumed_utxos_details, [], calculated_fee
 
 
 
@@ -975,9 +925,9 @@ async def create_op_return_transaction(
     logger.info(f"--- End of create_op_return_transaction ---")
     
     if broadcast_txid:
-        return tx.hex(), broadcast_timestamp, broadcast_txid, consumed_utxos_details, new_utxos_details
+        return tx.hex(), broadcast_timestamp, broadcast_txid, consumed_utxos_details, new_utxos_details, calculated_fee
     else:
-        return None, None, None, [], [] # Return empty lists for UTXO changes on failure
+        return None, None, None, [], [], None # Return empty lists for UTXO changes on failure
 
 
 
