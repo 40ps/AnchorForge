@@ -134,23 +134,34 @@ async def log_coingecko_price_event(dry_run: bool = False):
 
             op_return_payload_for_tx = ec_payload + x509_payload
             
+            # --- OPTIMIZATION: Prepare the audit record entry beforehand ---
+            # This ensures we capture all pre-transaction info even on failure.
             audit_record_entry = {
                 "log_id": str(uuid.uuid4()),
                 "original_audit_content": data_content_string,
                 "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
                 "format": audit_core.AUDIT_RECORD_FORMAT_V1,
                 "blockchain_record": {
-                    "txid": None, "raw_transaction_hex": None, "status": "pending_creation",
+                    "status": "pending_creation",
+                    "txid": None, 
+                    "raw_transaction_hex": None,
                     "data_hash_pushed_to_op_return": ec_payload[1].hex() if ec_payload else None,
-                    # ... (and so on, same as original script)
+                    "signature_pushed_to_op_return": ec_payload[2].hex() if ec_payload else None,
+                    "public_key_pushed_to_op_return": ec_payload[3].hex() if ec_payload else None,
+                    "x509_hash_pushed": x509_payload[1].hex() if x509_payload else None,
+                    "x509_signature_pushed": x509_payload[2].hex() if x509_payload else None,
+                    "x509_certificate_pushed": x509_payload[3].decode('utf-8') if x509_payload else None,
+                    "tx_note": tx_note_content
                 }, 
                 "notes": record_note_content
             }
-            
+
+
             # 3. Create Transaction
             assert Config.UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF is none"
+            
             tx_hex_returned, broadcast_timestamp_str, broadcast_txid, \
-            consumed_utxos_details, new_utxos_details = await audit_core.create_op_return_transaction(
+            consumed_utxos_details, new_utxos_details, calculated_fee = await audit_core.create_op_return_transaction(
                 spending_key_wif=Config.UTXO_STORE_KEY_WIF, 
                 recipient_address=str(sender_address),
                 op_return_data_pushes=op_return_payload_for_tx,
@@ -167,12 +178,24 @@ async def log_coingecko_price_event(dry_run: bool = False):
             if tx_hex_returned and broadcast_txid:
                 logging.info(f"Transaction created & broadcasted: {broadcast_txid}")
                 
+                tx_size_bytes = len(tx_hex_returned) // 2 if tx_hex_returned else 0
+
+
+                # --- Enrich the existing entry with transaction results ---
                 audit_record_entry["blockchain_record"].update({
                     "txid": broadcast_txid,
                     "raw_transaction_hex": tx_hex_returned,
                     "status": "broadcasted",
-                    "timestamp_broadcasted_utc": broadcast_timestamp_str
+                    "timestamp_broadcasted_utc": broadcast_timestamp_str,
+                    "fee_satoshis": calculated_fee,
+                    "tx_size_bytes": tx_size_bytes,
+                    "inputs": consumed_utxos_details,
+                    "outputs": new_utxos_details,
                 })
+
+
+                
+
                 audit_log.append(audit_record_entry)
 
                 for consumed_utxo in consumed_utxos_details:
@@ -192,6 +215,7 @@ async def log_coingecko_price_event(dry_run: bool = False):
                 return True
 
             else:
+                # --- On failure, just update the status and save ---
                 audit_record_entry["blockchain_record"]["status"] = "tx_creation_failed"
                 audit_log.append(audit_record_entry)
                 audit_core.save_audit_log(f_audit, audit_log)
