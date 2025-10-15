@@ -12,6 +12,8 @@ pause.flag + stop.flag
 
 Um 5 Events im Trockenlauf zu testen (ohne zu broadcasten):
 python main_batch_coingecko.py --count 5 --dry-run
+
+
 '''
 
 import asyncio
@@ -365,22 +367,9 @@ async def main():
             break # Stop the loop on the first failure to allow for investigation
         
 
- # --- Check for command files (pause or stop) ---
-        if os.path.exists('pause.flag'):
-            logging.info("'pause.flag' detected. Pausing process. To resume, delete the 'pause.flag' file.")
-            print(">>> PAUSE MODE <<<")
-
-            while os.path.exists('pause.flag'):
-                await asyncio.sleep(5) # Check every 5 seconds
-            logging.info("'pause.flag' removed. Resuming process.")
-
-        if os.path.exists('stop.flag'):
-            logging.info("'stop.flag' detected. Stopping batch process gracefully after this iteration.")
-            try:
-                os.remove('stop.flag') # Clean up the flag file
-            except OSError as e:
-                logging.error(f"Error removing stop.flag: {e}")
-            break # Exit the main for-loop
+        # --- Check for command files (pause or stop) ---
+        if await utils.check_process_controls('coingecko'):
+            break # Exit the main for-loop if a stop was requested
 
         # Pause between requests to respect the API rate limit, but not after the last one
         if i < total_requested - 1:
