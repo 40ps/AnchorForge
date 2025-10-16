@@ -2,12 +2,15 @@
 '''
 This program serves as the entry point for logging a single audit event 
 based on external data fetched from the CoinGecko API.
-python main_batch_coingecko.py
-python main_batch_coingecko.py --count 10
+
+Note: use --mainnet to confirm you want the mainnet (matching with config.py/.env)
+
+python main_batch_coingecko.py   --keyword coingecko-001 
+python main_batch_coingecko.py --count 10 --keyword coingecko-001
 python main_batch_coingecko.py --count 1000
 python main_batch_coingecko.py --count 1000 --reset   # starts a complete new batch even with some already processed
 python main_batch_coingecko.py --backup
-pause.flag + stop.flag
+python control_process coingecko pause/resume/stop
 
 
 Um 5 Events im Trockenlauf zu testen (ohne zu broadcasten):
@@ -40,6 +43,20 @@ import utils
 from bsv import PrivateKey
 from bsv.hash import sha256
 
+#  --- CONSTANTS ---
+DEFAULT_TX_NOTE = """**SPV-based Off-Chain Data Verification**
+This tx is part of a series demonstrating scalable, off-chain verifiable audit trails anchored to the blockchain. A verifier only needs an Integrity Record and a local cache of block headers.
+Keyword: coingecko-001
+
+**Description**
+Is contained as OP_RETURN payload of genesis txs
+Spending Tx (provides UTXOs): e98aa51c3d2de8041719c32079d1a8ada3d8160137f5d2655ad67d0ef1f2fe2b
+Genesis Tx 1 (Concept): 5cd8197616fab4a6579ccdd3a782e229c84c0238975aefdb3ea1007a8b1ef6c8
+Genesis Tx 2 (Example): 9bd554b491aeafc64e9693cd69880225aea17f44e39507000378252d091661da
+
+*PoC*: github.com/40ps/AnchorForge"""
+
+
 # Configure logging for this specific program
 logging.basicConfig(
     level=logging.INFO,
@@ -50,7 +67,20 @@ logging.basicConfig(
     ]
 )
 
-async def log_coingecko_price_event(dry_run: bool = False):
+def get_content_from_source(source: str | None) -> str | None:
+    if source is None:
+        return None
+    if os.path.isfile(source):
+        try:
+            with open(source, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            logging.error(f"Error reading file {source}: {e}")
+            sys.exit(1) # Exit on error
+    return source
+
+async def log_coingecko_price_event(dry_run: bool = False, keyword: str = "default", 
+                                    tx_note_content: str | None = None):
     """
     Orchestrates fetching data from CoinGecko and creating a single audit record.
     """
@@ -95,9 +125,6 @@ async def log_coingecko_price_event(dry_run: bool = False):
     logging.info(f"  Content to be logged: '{data_content_string[:200]}...'")
     logging.info(f"\n--- New Audit Note ---")
     logging.info(f"  Content to be noted: '{record_note_content}'")
-    
-    # For this specific logger, we don't need a transaction note
-    tx_note_content = None
 
     # --- Block 2: prepare file paths ---
     priv_key_funding = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
@@ -141,6 +168,7 @@ async def log_coingecko_price_event(dry_run: bool = False):
             # This ensures we capture all pre-transaction info even on failure.
             audit_record_entry = {
                 "log_id": str(uuid.uuid4()),
+                "keyword": keyword, 
                 "original_audit_content": data_content_string,
                 "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
                 "format": audit_core.AUDIT_RECORD_FORMAT_V1,
@@ -264,8 +292,33 @@ async def main():
         help="Immediately create a backup of the current state files and exit."
     )
 
+    parser.add_argument(
+        '-k', '--keyword',
+        type=str,
+        default="coingecko-001", # A sensible default for this script
+        help="A keyword or tag to associate with the audit records."
+    )
+    
+    parser.add_argument(
+        '-tn', '--transaction-note',
+        help="A note to be included in the OP_RETURN transaction. Can be a direct string or a file path."
+    )
+
+    parser.add_argument(
+        '--mainnet',
+        action='store_true',
+        help="A safety flag to confirm that you intend to write to the mainnet. Required if ACTIVE_NETWORK is 'main'."
+    )
+    
     args = parser.parse_args()
 
+    if Config.ACTIVE_NETWORK_NAME == 'main' and not args.mainnet:
+        logging.error("--- SAFETY ABORT ---")
+        logging.error("Your configuration is set to 'mainnet', but the --mainnet flag was not provided.")
+        logging.error("This is a safety measure to prevent accidental mainnet transactions.")
+        logging.error("Please add the --mainnet flag to your command if you are sure you want to proceed.")
+        return # Exit gracefully
+    
     if args.backup:
         logging.info("--- Manual Backup Triggered ---")
         
@@ -287,11 +340,18 @@ async def main():
         logging.info("--- Manual Backup Complete. Exiting. ---")
         return # Exit the program after backup
 
+
+
     # --- Count becomes mandatory only if not doing a backup ---
     if not args.count:
         parser.error("the following arguments are required: -c/--count (unless you are using --backup)")
 
-    
+
+    if args.transaction_note:
+        tx_note_content = get_content_from_source(args.transaction_note)
+    else:
+        tx_note_content = DEFAULT_TX_NOTE
+        
     # --- Status Management ---
     status_data = utils.read_batch_status()
 
@@ -329,7 +389,10 @@ async def main():
     for i in range(start_index, total_requested):
         logging.info(f"\n>>> Processing event {i + 1} of {total_requested} <<<")
         
-        success = await log_coingecko_price_event(dry_run=args.dry_run)
+        success = await log_coingecko_price_event(
+            dry_run=args.dry_run, 
+            keyword=args.keyword,
+            tx_note_content=tx_note_content)
         
         if success:
             successful_logs_this_run += 1
