@@ -250,7 +250,7 @@ async def setup_wallet_environment():
     # await sync_blockheaders()
 
 
-if __name__ == "__main__":
+async def main():
     # main_wallet_setup.py --sync
     # main_wallet_setup.py --create-utxolets 1000 2000
     parser = argparse.ArgumentParser(description="Manage the wallet environment.")
@@ -266,18 +266,36 @@ if __name__ == "__main__":
         type=int, 
         help="Create a number of smaller UTXOs of a specific size."
     )
+
+    parser.add_argument(
+        '--mainnet',
+        action='store_true',
+        help="A safety flag to confirm that you intend to write to the mainnet. Required if ACTIVE_NETWORK is 'main'."
+    )
     # Weitere Argumente für andere Funktionen...
 
     args = parser.parse_args()
 
-    async def main():
-        if args.sync:
-            await initialize_utxo_store()
-        elif args.create_utxolets:
-            size, number = args.create_utxolets
-            await create_utxolets(size=size, number=number)
-        else:
-            # Standardverhalten oder Hilfe anzeigen
-            print("No action specified. Use --sync or --create-utxolets. For help use -h")
+    if args.sync:
+        await initialize_utxo_store()
 
+    elif args.create_utxolets:
+        if Config.ACTIVE_NETWORK_NAME == 'main' and not args.mainnet:
+            logging.error("--- SAFETY ABORT ---")
+            logging.error("Your configuration is set to 'mainnet', but the --mainnet flag was not provided.")
+            logging.error("This is a safety measure to prevent accidental mainnet transactions.")
+            logging.error("Please add the --mainnet flag to your command if you are sure you want to proceed.")
+            return # Exit gracefully
+
+        size, number = args.create_utxolets
+        await create_utxolets(size=size, number=number)
+        
+    else:
+        # Standardverhalten oder Hilfe anzeigen
+        print("No action specified. Use --sync or --create-utxolets. For help use -h")
+
+
+
+
+if __name__ == "__main__":
     asyncio.run(main())
