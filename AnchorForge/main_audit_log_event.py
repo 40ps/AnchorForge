@@ -41,6 +41,7 @@ async def log_intermediate_result_process(
         data_source: str|None = None, 
         record_note_content: str|None = None,
         tx_note_content: str|None = None,
+        keyword: str = "default",
         dry_run: bool = False
         ):
     """
@@ -154,6 +155,7 @@ async def log_intermediate_result_process(
             # Temporary Audit-Record in memory
             audit_record_entry = {
                 "log_id": str(uuid.uuid4()),
+                "keyword": keyword, 
                 "original_audit_content": intermediate_audit_content_string,
                 "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
                 "format": audit_core.AUDIT_RECORD_FORMAT_V1,
@@ -171,8 +173,9 @@ async def log_intermediate_result_process(
             
             # 3. Create Transaction
             assert Config.UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF is none"
+            
             tx_hex_returned, broadcast_timestamp_str, broadcast_txid, \
-            consumed_utxos_details, new_utxos_details = await audit_core.create_op_return_transaction(
+                consumed_utxos_details, new_utxos_details, calculated_fee = await audit_core.create_op_return_transaction(
                 spending_key_wif=Config.UTXO_STORE_KEY_WIF, 
                 recipient_address=str(sender_address),
                 op_return_data_pushes=op_return_payload_for_tx,
@@ -189,12 +192,18 @@ async def log_intermediate_result_process(
             if tx_hex_returned and broadcast_txid:
                 logging.info(f"Transaction created & broadcasted: {broadcast_txid}")
                 
+                tx_size_bytes = len(tx_hex_returned) // 2 if tx_hex_returned else 0
+
                 # update Audit-Record, add to Log-List
                 audit_record_entry["blockchain_record"].update({
                     "txid": broadcast_txid,
                     "raw_transaction_hex": tx_hex_returned,
                     "status": "broadcasted",
-                    "timestamp_broadcasted_utc": broadcast_timestamp_str
+                    "timestamp_broadcasted_utc": broadcast_timestamp_str,
+                    "fee_satoshis": calculated_fee,
+                    "tx_size_bytes": tx_size_bytes,
+                    "inputs": consumed_utxos_details,
+                    "outputs": new_utxos_details,
                 })
                 audit_log.append(audit_record_entry)
 
@@ -239,7 +248,7 @@ def get_content_from_source(source: str | None) -> str | None:
     return source
 
 
-if __name__ == "__main__":
+async def main():
     parser = argparse.ArgumentParser(
         description="Creates and broadcasts an audit record transaction.",
         formatter_class=argparse.RawTextHelpFormatter # for nicer help texts
@@ -250,6 +259,13 @@ if __name__ == "__main__":
         '-d', '--data',
         help="The data to be anchored. Can be a direct string or a file path."
     )
+    parser.add_argument(
+        '-k', '--keyword',
+        type=str,
+        default="logevent", # A sensible default for this script
+        help="A keyword or tag to associate with the audit records."
+    )
+    
     parser.add_argument(
         '-rn', '--record-note',
         help="A note for the local audit record. Can be a direct string or a file path."
@@ -264,9 +280,22 @@ if __name__ == "__main__":
         help="Perform a dry run: build the transaction and show fees, but do not broadcast."
     )
 
+    parser.add_argument(
+        '--mainnet',
+        action='store_true',
+        help="A safety flag to confirm that you intend to write to the mainnet. Required if ACTIVE_NETWORK is 'main'."
+    )
+
     # 3. read arguments from command line
     args = parser.parse_args()
 
+    if Config.ACTIVE_NETWORK_NAME == 'main' and not args.mainnet:
+        logging.error("--- SAFETY ABORT ---")
+        logging.error("Your configuration is set to 'mainnet', but the --mainnet flag was not provided.")
+        logging.error("This is a safety measure to prevent accidental mainnet transactions.")
+        logging.error("Please add the --mainnet flag to your command if you are sure you want to proceed.")
+        return # Exit gracefully
+    
     # 4. resolve content from each data source
     data_content = get_content_from_source(args.data)
     record_note_content = get_content_from_source(args.record_note)
@@ -280,11 +309,13 @@ if __name__ == "__main__":
     asyncio.run(log_intermediate_result_process(
             data_source=data_content,
             record_note_content=record_note_content,
-             tx_note_content=tx_note_content,
-             dry_run=args.dry_run
+            tx_note_content=tx_note_content,
+            keyword=args.keyword,
+            dry_run=args.dry_run
         ))
 
- 
+if __name__ == "__main__":
+    asyncio.run(main())
 
 
 '''
