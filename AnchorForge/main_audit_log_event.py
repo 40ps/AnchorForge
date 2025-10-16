@@ -151,7 +151,7 @@ async def log_intermediate_result_process(
                     x509_payload = audit_core.build_x509_audit_payload(intermediate_audit_content_string, private_x509_key_pem, x509_cert_pem)
 
             op_return_payload_for_tx = ec_payload + x509_payload
-            
+             
             # Temporary Audit-Record in memory
             audit_record_entry = {
                 "log_id": str(uuid.uuid4()),
