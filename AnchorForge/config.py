@@ -14,6 +14,10 @@ class Config:
     It reads settings from environment variables, providing a single source of truth.
     """
 
+    # --- Protocol Identifier ---
+    # This string is pushed into the OP_RETURN data to identify the application.
+    ANCHOR_FORGE_ID = "AnchorForge v0.1"
+
     ACTIVE_NETWORK_NAME = os.getenv("NETWORK", "test").lower()
 
     if ACTIVE_NETWORK_NAME == "test":
