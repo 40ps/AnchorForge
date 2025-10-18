@@ -42,10 +42,9 @@ logger = logging.getLogger(__name__)
 # These single-byte identifiers are a key component of the new, flexible
 # payload structure, allowing the verifier to know which type of signature
 # to expect for each data triplet.
+AUDIT_MODE_APP_ID = b'\xF0' # Protocol Identifier
 AUDIT_MODE_EC = b'E' # 'E' for Elliptic Curve Digital Signature Algorithm (ECDSA)
 AUDIT_MODE_X509 = b'X' # 'X' for X.509 Certificate
-# CHANGE
-# New constant for a generic note payload.
 AUDIT_MODE_NOTE = b'N' # 'N' for a Note or a comment.
 
 # Definiert die logische Struktur des OP_RETURN Payloads für Version 1.
@@ -71,11 +70,73 @@ def save_audit_log(f, audit_records: List[Dict]):
     json.dump(audit_records, f, indent=4)
     f.truncate()
 
-def print_op_return_scriptpubkey(script: Script):
+
+
+# In AF_py/audit_core.py
+
+def print_op_return_scriptpubkey_(script: Script):
+    """
+    Prints a human-readable form of the OP_RETURN scriptPubKey.
+    This version correctly handles both legacy (OP_RETURN) and
+    new (OP_FALSE OP_RETURN) script formats.
+    """
+    logger.info("\n--- OP_RETURN ScriptPubkey Details ---")
+    
+    if not script or not script.chunks:
+        logger.error("Error: The script object is None or has no chunks.")
+        return
+
+    # Check for the new OP_FALSE OP_RETURN pattern
+    is_op_false_pattern = (len(script.chunks) > 1 and 
+                           script.chunks[0].op == 0x00 and 
+                           script.chunks[1].op == 0x6a)
+    
+    # Check for the legacy OP_RETURN pattern
+    is_legacy_pattern = script.chunks[0].op == 0x6a
+
+    data_chunks_start_index = -1
+    if is_op_false_pattern:
+        data_chunks_start_index = 2
+        logger.info("Detected OP_FALSE OP_RETURN pattern.")
+    elif is_legacy_pattern:
+        data_chunks_start_index = 1
+        logger.info("Detected legacy OP_RETURN pattern.")
+    else:
+        logger.warning("This is not a recognized OP_RETURN script format.")
+        return
+
+    logger.info(f"Full Script (ASM): {script.to_asm()}")
+    logger.info(f"Full Script (Hex): {script.hex()}")
+
+    logger.info("OP_RETURN Data Elements:")
+    # Iterate only over the data pushes, starting after the opcodes
+    for i, chunk in enumerate(script.chunks[data_chunks_start_index:]):
+        if chunk.data is not None:
+            if i == 0 and len(script.chunks) > data_chunks_start_index and script.chunks[data_chunks_start_index].op == AUDIT_MODE_APP_ID:
+                try:
+                    decoded_data = chunk.data.decode('utf-8')
+                    logger.info(f"  Element {i+1} (App ID): '{decoded_data}'")
+                    continue # Skip to the next chunk
+                except UnicodeDecodeError:
+                    pass # Fallback to normal processing if it's not valid UTF-8
+            try:
+                decoded_data = chunk.data.decode('utf-8')
+                logger.info(f"  Element {i+1}: (Text) '{decoded_data}' (Hex: {chunk.data.hex()})")
+            except UnicodeDecodeError:
+                logger.info(f"  Element {i+1}: (Raw Hex) {chunk.data.hex()} (Length: {len(chunk.data)} bytes)")
+        else:
+            # This part handles unexpected non-data opcodes within the data section
+            op_code = chunk.op
+            op_hex = hex(op_code) if isinstance(op_code, int) else op_code
+            logger.warning(f"  Element {i+1}: (Unexpected Opcode) {op_hex}")
+
+def print_op_return_scriptpubkey (script: Script):   #_bu251015
     """
     Prints a human-readable form of the OP_RETURN scriptPubKey.
     It iterates through the script chunks to identify and display
     OP_RETURN and the data pushes.
+    This version handles both, legacy (OP_RETURN) and new 
+    (OP_FALSE OP_RETURN) script formats
 
     Args:
         script (Script): The Script object of the OP_RETURN output.
@@ -1236,6 +1297,25 @@ async def audit_record_verifier(log_id: str) -> bool:
         while current_index < len(all_data_pushes):
             mode_byte = all_data_pushes[current_index]
             
+            # --- NEW: Handle the Application ID payload ---
+            if mode_byte == AUDIT_MODE_APP_ID:
+                if len(all_data_pushes) < current_index + 2:
+                    logger.error("  App ID Payload Verification: FAIL. Incomplete payload.")
+                    payload_verification_overall_success = False
+                    break
+                
+                app_id_bytes = all_data_pushes[current_index + 1]
+                try:
+                    decoded_app_id = app_id_bytes.decode('utf-8')
+                    logger.info(f"  App ID found and verified: '{decoded_app_id}'")
+                except UnicodeDecodeError:
+                    logger.error("  App ID Payload Verification: FAIL. Could not decode App ID as UTF-8.")
+                    payload_verification_overall_success = False
+                
+                current_index += 2 # Move past the mode byte and the App ID data
+                continue # Continue to the next item
+
+
             # Check for a "note" payload, which only has one data push
             if mode_byte == AUDIT_MODE_NOTE:
                 if len(all_data_pushes) < current_index + 2:

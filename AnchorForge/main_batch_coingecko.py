@@ -162,7 +162,14 @@ async def log_coingecko_price_event(dry_run: bool = False, keyword: str = "defau
                 if private_x509_key_pem and x509_cert_pem:
                     x509_payload = audit_core.build_x509_audit_payload(data_content_string, private_x509_key_pem, x509_cert_pem)
 
-            op_return_payload_for_tx = ec_payload + x509_payload
+
+            # --- Prepend the Application ID payload ---
+            app_id_payload = [
+                audit_core.AUDIT_MODE_APP_ID,
+                Config.ANCHOR_FORGE_ID.encode('utf-8')
+            ]
+            op_return_payload_for_tx = app_id_payload + ec_payload + x509_payload
+            
             
             # --- OPTIMIZATION: Prepare the audit record entry beforehand ---
             # This ensures we capture all pre-transaction info even on failure.

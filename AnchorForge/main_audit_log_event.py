@@ -150,7 +150,11 @@ async def log_intermediate_result_process(
                 if private_x509_key_pem and x509_cert_pem:
                     x509_payload = audit_core.build_x509_audit_payload(intermediate_audit_content_string, private_x509_key_pem, x509_cert_pem)
 
-            op_return_payload_for_tx = ec_payload + x509_payload
+            app_id_payload = [
+                audit_core.AUDIT_MODE_APP_ID,
+                Config.ANCHOR_FORGE_ID.encode('utf-8')
+            ]
+            op_return_payload_for_tx = app_id_payload + ec_payload + x509_payload
              
             # Temporary Audit-Record in memory
             audit_record_entry = {
@@ -306,13 +310,13 @@ async def main():
     logging.info(f"Received audit tx note: {tx_note_content}")
 
     # 5. call core function 
-    asyncio.run(log_intermediate_result_process(
+    await log_intermediate_result_process(
             data_source=data_content,
             record_note_content=record_note_content,
             tx_note_content=tx_note_content,
             keyword=args.keyword,
             dry_run=args.dry_run
-        ))
+        )
 
 if __name__ == "__main__":
     asyncio.run(main())
