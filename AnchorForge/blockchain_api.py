@@ -6,8 +6,10 @@ V25-10-20
 Change from httpx to aiohttp to solve timeout issues
 '''
 
-import logging
 from typing import Dict, Any, Optional, List
+import logging
+import time
+from collections import deque
 import json
 import asyncio
 
@@ -16,10 +18,32 @@ import aiohttp
 
 from config import Config
 
+api_call_timestamps = deque()  # Time stamps of last calls
+MEASUREMENT_WINDOW_SECONDS = 60 # time for sliding average 
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# --- NEW: A helper function for consistent error logging with aiohttp ---
+# --- Helper to count and compute rate
+def _record_api_call_and_get_rate():
+    """Records the current timestamp and calculates the average rate over the window."""
+    now = time.time()
+    api_call_timestamps.append(now)
+
+    # remove time stamps older than a measuring window
+    while api_call_timestamps and api_call_timestamps[0] < now - MEASUREMENT_WINDOW_SECONDS:
+        api_call_timestamps.popleft()
+
+    # compute the rate
+    count_in_window = len(api_call_timestamps)
+    rate_per_second = count_in_window / MEASUREMENT_WINDOW_SECONDS if MEASUREMENT_WINDOW_SECONDS > 0 else 0
+    rate_per_minute = rate_per_second * 60
+
+    logger.info(f"[API Rate] Calls in last {MEASUREMENT_WINDOW_SECONDS}s: {count_in_window}. Avg Rate: {rate_per_minute:.2f} calls/min.")
+    return rate_per_minute
+
+
+# --- helper function for consistent error logging with aiohttp ---
 async def _log_aiohttp_error(response: aiohttp.ClientResponse, context: str):
     """Logs detailed error information from an aiohttp response."""
     try:
@@ -29,11 +53,12 @@ async def _log_aiohttp_error(response: aiohttp.ClientResponse, context: str):
         error_message = await response.text()
     logger.error(f"Request failed for {context}: Status {response.status}, Error: {error_message}")
 
-# --- MODIFIED: broadcast_transaction rewritten for aiohttp ---
+# --- broadcast_transaction rewritten for aiohttp ---
 async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
     """
     Broadcasts a signed raw Bitcoin SV transaction to the network via WhatsOnChain API.
     """
+    _record_api_call_and_get_rate()
     url = f"{Config.WOC_API_BASE_URL}/tx/raw"
     headers = {'Content-Type': 'application/json'}
     payload = {'txhex': signed_raw_tx_string}
@@ -76,6 +101,7 @@ async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
 # --- MODIFIED: fetch_raw_transaction_hex rewritten for aiohttp ---
 async def fetch_raw_transaction_hex(txid: str) -> Optional[str]:
     """Fetches the raw transaction hex for a given txid from WhatsOnChain."""
+    _record_api_call_and_get_rate()
     network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{network_url}/tx/{txid}/hex"
     
@@ -99,9 +125,10 @@ async def fetch_raw_transaction_hex(txid: str) -> Optional[str]:
         logger.error(f"An unexpected error occurred fetching raw tx for {txid}: {e}")
         return None
 
-# --- MODIFIED: get_transaction_status_woc rewritten for aiohttp ---
+# --- get_transaction_status_woc rewritten for aiohttp ---
 async def get_transaction_status_woc(txid: str) -> Optional[Dict[str, Any]]:
     """Get the status of a transaction by its ID from WhatsOnChain."""
+    _record_api_call_and_get_rate()
     network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{network_url}/tx/{txid}"
     
@@ -133,6 +160,7 @@ async def get_transaction_status_woc(txid: str) -> Optional[Dict[str, Any]]:
 
 async def get_chain_info_woc() -> Optional[Dict[str, Any]]:
     """Get general blockchain information from WhatsOnChain."""
+    _record_api_call_and_get_rate()
     network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{network_url}/chain/info"
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
@@ -150,6 +178,7 @@ async def get_chain_info_woc() -> Optional[Dict[str, Any]]:
 
 async def get_block_header(block_hash: str) -> Optional[Dict[str, Any]]:
     """Get block header information by block hash from WhatsOnChain."""
+    _record_api_call_and_get_rate()
     network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{network_url}/block/{block_hash}/header"
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
@@ -167,6 +196,7 @@ async def get_block_header(block_hash: str) -> Optional[Dict[str, Any]]:
 
 async def get_block_header_height(height: int) -> Optional[Dict[str, Any]]:
     """Get block header information by block height from WhatsOnChain."""
+    _record_api_call_and_get_rate()
     network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{network_url}/block/height/{height}"
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
@@ -188,6 +218,7 @@ async def get_block_header_height(height: int) -> Optional[Dict[str, Any]]:
 
 async def get_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
     """Get the Merkle path for a transaction by its ID from WhatsOnChain."""
+    _record_api_call_and_get_rate()
     network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{network_url}/tx/{txid}/proof"
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
@@ -205,6 +236,7 @@ async def get_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
 
 async def fetch_utxos_for_address(address: str) -> List[Dict[str, Any]]:
     """Fetch all unspent transaction outputs (UTXOs) for a given address."""
+    _record_api_call_and_get_rate()
     network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{network_url}/address/{address}/unspent"
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
