@@ -3,6 +3,9 @@
 This program serves as the entry point for logging a single audit event.
 It orchestrates the creation of an OP_RETURN transaction based on a static
 string and updates the local caches accordingly.
+
+--dry-run no change to stores
+--no-broadcast no broardcast, BUT updates all Stores
 '''
 
 import asyncio
@@ -42,7 +45,8 @@ async def log_intermediate_result_process(
         record_note_content: str|None = None,
         tx_note_content: str|None = None,
         keyword: str = "default",
-        dry_run: bool = False
+        dry_run: bool = False,
+        no_broadcast: bool = False
         ):
     """
     Orchestrates the process of creating and broadcasting an audit record
@@ -189,7 +193,8 @@ async def log_intermediate_result_process(
                 tx_store=tx_store,
                 f_tx_store=f_tx, # file handle!
                 note=tx_note,
-                dry_run = dry_run
+                dry_run = dry_run,
+                no_broadcast=no_broadcast
             )
 
             # 4. if tx success, write all changes into stores
@@ -285,6 +290,12 @@ async def main():
     )
 
     parser.add_argument(
+        '--no-broadcast',
+        action='store_true',
+        help="Simulate a successful broadcast locally without sending to the network. Updates all local stores."
+    )
+
+    parser.add_argument(
         '--mainnet',
         action='store_true',
         help="A safety flag to confirm that you intend to write to the mainnet. Required if ACTIVE_NETWORK is 'main'."
@@ -315,7 +326,8 @@ async def main():
             record_note_content=record_note_content,
             tx_note_content=tx_note_content,
             keyword=args.keyword,
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
+            no_broadcast=args.no_broadcast
         )
 
 if __name__ == "__main__":

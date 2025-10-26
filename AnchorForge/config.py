@@ -98,14 +98,14 @@ class Config:
     MAINSCRIPT_RUNNING = int(os.getenv("MAINSCRIPT_RUNNING", 1000))
     IGNORE_REST = os.getenv("IGNORE_REST", "True").lower() in ('true', '1', 't')
     
-    ACCESS_TIMEOUT = 5
+    ACCESS_TIMEOUT = 5  # ATTENTION! CURRENTLY NOT USED EVERYWHERE
+    TIMEOUT_1 = 5.0
+    TIMEOUT_CONNECT = 10.0
 
 
     # Check if critical secrets are missing
     if not all([PRIVATE_KEY_WIF, UTXO_STORE_KEY_WIF, PRIVATE_BANK_KEY_WIF, PRIVATE_SIGNING_KEY_WIF]):
         raise ValueError("One or more critical private keys are missing. Check your .env file.")
-
-
 
     # --- Backup Configuration ---
     BACKUP_DIR = "backup"
@@ -114,6 +114,10 @@ class Config:
     # API Limits
     COINGECKO_API_MONTHLY_LIMIT = 10000
 
+
+    # Other global Vars
+    VERBOSE = True # False
+    SHOW_RAW_TX = False
 
 
 
