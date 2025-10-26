@@ -63,3 +63,53 @@ async def get_coingecko_bsv_price():
         utils.increment_api_usage('coingecko')
         
     return price_data
+
+
+async def get_iss_location():
+    """
+    Fetches the current location data for the ISS from api.wheretheiss.at using aiohttp.
+    It increments the 'iss' API usage counter on success.
+
+    Returns:
+        dict: The location data from the API (latitude, longitude, timestamp, etc.), or None on failure.
+    """
+    # The ISS API URL for the satellite (ID 25544)
+    url = "https://api.wheretheiss.at/v1/satellites/25544"
+    headers = {
+        'Accept': 'application/json'
+    }
+
+    # Use the same timeout configuration as for other API calls
+    timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
+
+    iss_data = None
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    iss_data = await response.json()
+                    logger.info(f"Successfully fetched data from wheretheiss.at: {iss_data}")
+                else:
+                    # Log error using the helper function if available, otherwise basic logging
+                    if hasattr(utils, '_log_aiohttp_error'): # Check if helper exists (optional)
+                         await utils._log_aiohttp_error(response, "get_iss_location")
+                    else:
+                         error_text = await response.text()
+                         logger.error(f"HTTP error occurred while fetching ISS data: {response.status} - {error_text}")
+                    return None
+
+    except asyncio.TimeoutError:
+        logger.error(f"Request to wheretheiss.at failed: Timeout occurred after {Config.TIMEOUT_CONNECT} seconds.")
+        return None
+    except aiohttp.ClientError as e:
+        logger.error(f"Request to wheretheiss.at failed: A network client error occurred. Error: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during wheretheiss.at API call: {e}")
+        return None
+
+    # If the call was successful, increment the 'iss' counter
+    if iss_data:
+        utils.increment_api_usage('iss') # Use 'iss' as the service name
+
+    return iss_data
