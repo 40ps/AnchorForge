@@ -10,6 +10,7 @@ import json
 from datetime import datetime
 import shutil
 import os
+import sys
 import asyncio
 
 from bsv.hash import hash256 # Assuming hash256 is used by verify_block_hash
@@ -31,8 +32,33 @@ from config import Config
 
 API_COUNTER_FILE = "api_usage_counter.json"  # To avoid overusing API
 STATUS_FILE = "coingecko_batch_status.json"  # for recovery mechanism
+DEFAULT_STATUS_FILE = "coingecko_batch_status.json" # Default for backward compatibility
 
 logger = logging.getLogger(__name__)
+
+# --- NEW: Function to resolve content from string or file path ---
+def get_content_from_source(source: str | None) -> str | None:
+    """
+    Reads content either directly from a string or from a file path.
+
+    Args:
+        source (str | None): The input string or a path to a file.
+
+    Returns:
+        str | None: The content as a string, or None if input was None. Exits on file read error.
+    """
+    if source is None:
+        return None
+    if os.path.isfile(source):
+        try:
+            with open(source, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            # Using logger if available, otherwise print
+            logger.error(f"Error reading file {source}: {e}") if 'logger' in globals() else print(f"Error reading file {source}: {e}")
+            sys.exit(1) # Exit script on file read error
+    # If it's not a file path, assume it's the direct content string
+    return source
 
 def read_api_usage() -> dict:
     """
@@ -118,23 +144,35 @@ def check_api_limit_exceeded(service_name: str, limit: int | None) -> bool:
         return False
 
 # --- Backup support ---
-def read_batch_status() -> dict:
+def read_batch_status(filename: str = DEFAULT_STATUS_FILE) -> dict:
     """
-    Reads the batch status file.
+    Reads the specified batch status file.
+    Uses DEFAULT_STATUS_FILE if no filename is provided.
     """
     try:
-        with open(STATUS_FILE, 'r') as f:
-            return json.load(f)
+        with open(filename, 'r') as f:
+            status_data = json.load(f)
+            # Ensure essential keys exist
+            status_data.setdefault('total_requested', 0)
+            status_data.setdefault('completed_count', 0)
+            status_data.setdefault('status', 'idle')
+            return status_data
     except (FileNotFoundError, json.JSONDecodeError):
         # If file does not exist or is corrupt, return a default state
+        logger.warning(f"Status file '{filename}' not found or corrupt. Returning default state.")
         return {"total_requested": 0, "completed_count": 0, "status": "idle"}
+    
 
-def write_batch_status(status_data: dict):
+def write_batch_status(status_data: dict, filename: str = DEFAULT_STATUS_FILE):
     """
-    Writes data to the batch status file.
+    Writes data to the specified batch status file.
+    Uses DEFAULT_STATUS_FILE if no filename is provided.
     """
-    with open(STATUS_FILE, 'w') as f:
-        json.dump(status_data, f, indent=4)
+    try:
+        with open(filename, 'w') as f:
+            json.dump(status_data, f, indent=4)
+    except IOError as e:
+        logger.error(f"Could not write to status file '{filename}': {e}")
 
 def create_backup(files_to_backup: list, backup_dir: str):
     """
