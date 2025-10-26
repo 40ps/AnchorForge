@@ -34,26 +34,40 @@ STATUS_FILE = "coingecko_batch_status.json"  # for recovery mechanism
 
 logger = logging.getLogger(__name__)
 
-def read_api_usage(service_name: str) -> dict:
+def read_api_usage() -> dict:
     """
     Reads the API usage counter file and handles monthly reset.
+    Returns the full counter data dictionary.
     """
     try:
         with open(API_COUNTER_FILE, 'r') as f:
             counter_data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        # If file does not exist or is corrupt, create a new one
+        # If file does not exist or is corrupt, create a new default structure
+        logger.warning(f"'{API_COUNTER_FILE}' not found or corrupt. Creating a new one.")
         counter_data = {
-            f"{service_name}_monthly_count": 0,
+            "coingecko_monthly_count": 0,
+            "iss_monthly_count": 0,
             "last_reset_date": datetime.now().strftime('%Y-%m-01')
         }
-
-    # Check for month change to reset counter
-    last_reset = datetime.strptime(counter_data['last_reset_date'], '%Y-%m-%d')
-    if last_reset.month != datetime.now().month or last_reset.year != datetime.now().year:
-        counter_data[f"{service_name}_monthly_count"] = 0
-        counter_data['last_reset_date'] = datetime.now().strftime('%Y-%m-01')
         _write_api_usage(counter_data)
+
+    # Check for month change to reset all counters
+    try:
+        last_reset = datetime.strptime(counter_data.get('last_reset_date', '1970-01-01'), '%Y-%m-%d')
+        now = datetime.now()
+        if last_reset.month != now.month or last_reset.year != now.year:
+            logger.info("New month detected. Resetting API usage counters.")
+            # Reset all known service counters
+            for key in counter_data.keys():
+                if key.endswith('_monthly_count'):
+                    counter_data[key] = 0
+            counter_data['last_reset_date'] = now.strftime('%Y-%m-01')
+            _write_api_usage(counter_data)
+    except ValueError:
+         logger.error(f"Invalid date format in '{API_COUNTER_FILE}'. Resetting date.")
+         counter_data['last_reset_date'] = datetime.now().strftime('%Y-%m-01')
+         _write_api_usage(counter_data)
         
     return counter_data
 
@@ -61,27 +75,47 @@ def _write_api_usage(data: dict):
     """
     Internal function to write data to the counter file.
     """
-    with open(API_COUNTER_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+    try:
+        with open(API_COUNTER_FILE, 'w') as f:
+            json.dump(data, f, indent=4)
+    except IOError as e:
+        logger.error(f"Could not write to API counter file '{API_COUNTER_FILE}': {e}")
 
 def increment_api_usage(service_name: str):
     """
     Increments the usage counter for a given service.
     """
-    counter_data = read_api_usage(service_name)
+    counter_data = read_api_usage()
     counter_key = f"{service_name}_monthly_count"
-    counter_data[counter_key] = counter_data.get(counter_key, 0) + 1
+    
+    # Ensure the key exists before incrementing
+    if counter_key not in counter_data:
+         logger.warning(f"Counter key '{counter_key}' not found in '{API_COUNTER_FILE}'. Initializing to 1.")
+         counter_data[counter_key] = 1
+    else:
+        counter_data[counter_key] = counter_data.get(counter_key, 0) + 1
+        
     _write_api_usage(counter_data)
+    logger.debug(f"Incremented API counter for '{service_name}'. New count: {counter_data[counter_key]}")
 
-def check_api_limit_exceeded(service_name: str, limit: int) -> bool:
+def check_api_limit_exceeded(service_name: str, limit: int | None) -> bool:
     """
     Checks if the API usage limit for a service has been exceeded.
-    Returns True if limit is reached, False otherwise.
+    Returns True if limit is reached or exceeded, False otherwise.
+    If limit is None, it always returns False (no limit).
     """
-    counter_data = read_api_usage(service_name)
-    count = counter_data.get(f"{service_name}_monthly_count", 0)
-    return count >= limit
+    if limit is None:
+        return False # No limit defined for this service
 
+    counter_data = read_api_usage()
+    counter_key = f"{service_name}_monthly_count"
+    count = counter_data.get(counter_key, 0)
+    
+    if count >= limit:
+        logger.warning(f"API limit for '{service_name}' reached ({count}/{limit}).")
+        return True
+    else:
+        return False
 
 # --- Backup support ---
 def read_batch_status() -> dict:
