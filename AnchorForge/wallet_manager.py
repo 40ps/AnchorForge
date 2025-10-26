@@ -26,13 +26,26 @@ from bsv import PrivateKey, Network
 logger = logging.getLogger(__name__)
 
 # --- Helper function for dynamic file naming
-def _get_filename_for_address(address: str, network_name: str) -> str:
+def _get_filename_for_address(address: str, network_name: str, simulation: bool = False) -> str:
     """
     Generates a unique filename for the UTXO store based on the address and network.
-    The filename will be 'utxo_store_<network>_<first4>...<last4>.json'.
+    Appends a '.sim.json' suffix if running in simulation mode.
+
+    Args:
+        address (str): The wallet address.
+        network_name (str): The name of the network ('main' or 'test').
+        simulation (bool, optional): If True, appends '.sim.json'. Defaults to False.
+
+    Returns:
+        str: The generated filename.
     """
     short_address = f"{address[:4]}{address[-4:]}"
-    return f"utxo_store_{network_name}_{short_address}.json"
+    base_name = f"utxo_store_{network_name}_{short_address}"
+    
+    # Add '.sim.json' suffix for simulation runs, otherwise '.json'
+    suffix = ".sim.json" if simulation else ".json"
+    
+    return f"{base_name}{suffix}"
 
 
 # --- Section local UTXO and Tx Store
