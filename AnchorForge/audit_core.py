@@ -694,7 +694,182 @@ def verify_x509_payload(payload: List[bytes], original_content: str) -> bool:
         return False
 
 
-# audit_core.py
+
+async def create_op_return_transaction_new_proposal(
+        spending_key_wif: str,
+        recipient_address: str,
+        op_return_data_pushes: List[bytes],
+        original_audit_content_string: str,
+        network: Network,
+        current_utxo_store_data: Dict,
+        tx_store: Dict,
+        f_tx_store: IO,
+        note: Optional[str] = None,
+        dry_run: bool = False
+        # TODO no broadcast fehlt noch
+) -> tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict], Optional[int]]:
+    """
+    Creates a Bitcoin SV transaction with an OP_RETURN output and returns change.
+    This version is optimized with caching for parent transaction objects to improve performance.
+
+    Returns:
+         tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict], Optional[int]]:
+            Returns (raw_tx_hex, timestamp_broadcasted, txid, consumed_utxos_details, new_utxos_details, calculated_fee).
+    """
+    logger.info(f"\n--- Creating OP_RETURN Transaction from {recipient_address} ---")
+
+    MINIMUM_UTXO_VALUE = 546
+
+    # --- OPTIMIZATION: Prioritize UTXOs with cached parent transactions ---
+    all_available_utxos = [utxo for utxo in current_utxo_store_data["utxos"] if not utxo["used"] and utxo["satoshis"] >= MINIMUM_UTXO_VALUE]
+    cached_txids = {tx['txid'] for tx in tx_store.get("transactions", [])}
+    utxos_with_cache = [utxo for utxo in all_available_utxos if utxo['txid'] in cached_txids]
+    utxos_without_cache = [utxo for utxo in all_available_utxos if utxo['txid'] not in cached_txids]
+    utxos_with_cache.sort(key=lambda u: u['satoshis'], reverse=True)
+    utxos_without_cache.sort(key=lambda u: u['satoshis'], reverse=True)
+    available_utxos = utxos_with_cache + utxos_without_cache
+
+    if not available_utxos:
+        logger.error(f"No suitable UTXOs available for {recipient_address} to cover fees. Please fund the address.")
+        return None, None, None, [], [], None
+
+    tx_inputs = []
+    total_input_satoshis = 0
+    consumed_utxos_details = []
+    priv_key = PrivateKey(spending_key_wif, network)
+
+    #  --- Cache for parsed transaction objects to avoid reparsing.
+    source_tx_cache = {}
+
+    for utxo in available_utxos:
+        source_tx_obj = None
+        source_txid = utxo['txid']
+
+        if source_txid in source_tx_cache:
+            source_tx_obj = source_tx_cache[source_txid]
+        else:
+            raw_source_tx_hex = None
+            for tx_entry in tx_store["transactions"]:
+                if tx_entry["txid"] == source_txid:
+                    raw_source_tx_hex = tx_entry['rawtx']
+                    break
+
+            if raw_source_tx_hex is None:
+                logger.warning(f"Warning: Raw transaction for UTXO {source_txid} not in cache. Fetching from network.")
+                raw_source_tx_hex = await blockchain_api.fetch_raw_transaction_hex(source_txid)
+                if raw_source_tx_hex and raw_source_tx_hex != "0":
+                    if not any(tx['txid'] == source_txid for tx in tx_store["transactions"]):
+                        tx_store["transactions"].append({
+                            "txid": source_txid,
+                            "rawtx": raw_source_tx_hex,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
+
+            if raw_source_tx_hex and raw_source_tx_hex != "0":
+                source_tx_obj = Transaction.from_hex(raw_source_tx_hex)
+                if source_tx_obj:
+                    source_tx_cache[source_txid] = source_tx_obj
+
+        if source_tx_obj is None:
+            logger.warning(f"Could not get or parse source transaction for UTXO {source_txid}. Skipping.")
+            continue
+
+        tx_inputs.append(TransactionInput(
+            source_transaction=source_tx_obj,
+            source_txid=source_txid,
+            source_output_index=utxo['vout'],
+            unlocking_script_template=cast(UnlockingScriptTemplate, P2PKH().unlock(priv_key))
+        ))
+        total_input_satoshis += utxo['satoshis']
+        consumed_utxos_details.append(utxo)
+
+        if total_input_satoshis >= Config.LOGGING_UTXO_THRESHOLD:
+            break
+
+    if not tx_inputs:
+        logger.warning(f"No usable UTXOs found for address {recipient_address} after fetching source transactions. Cannot create transaction.")
+        return None, None, None, [], [], None
+
+    logger.info(f"  Attempting to create transaction for content: '{original_audit_content_string[:100]}...'")
+
+    op_return_script_bytes = bytes.fromhex("006a")  # OP_FALSE OP_RETURN
+    all_pushes = op_return_data_pushes
+    if note:
+        all_pushes = all_pushes + [AUDIT_MODE_NOTE, note.encode('utf-8')]
+    
+    for data_bytes in all_pushes:
+        data_length = len(data_bytes)
+        if data_length < 76:
+            op_return_script_bytes += bytes([data_length])
+        elif data_length <= 255:
+            op_return_script_bytes += bytes.fromhex("4c") + data_length.to_bytes(1, byteorder='little')
+        elif data_length <= 65535:
+            op_return_script_bytes += bytes.fromhex("4d") + data_length.to_bytes(2, byteorder='little')
+        else: # up to 4294967295
+            op_return_script_bytes += bytes.fromhex("4e") + data_length.to_bytes(4, byteorder='little')
+        op_return_script_bytes += data_bytes
+
+    op_return_script = Script(op_return_script_bytes.hex())
+    print_op_return_scriptpubkey(op_return_script)
+
+    tx_output_op_return = TransactionOutput(locking_script=op_return_script, satoshis=0, change=False)
+    tx_output_change = TransactionOutput(locking_script=P2PKH().lock(recipient_address), satoshis=1, change=True)
+    tx = Transaction(tx_inputs, [tx_output_op_return, tx_output_change])
+
+    tx.fee(SatoshisPerKilobyte(value=Config.FEE_STRATEGY))
+
+    total_output_satoshis = sum(output.satoshis for output in tx.outputs)
+    calculated_fee = total_input_satoshis - total_output_satoshis
+
+    logger.info(f"Total Input Satoshis: {total_input_satoshis}")
+    logger.info(f"Total Output Satoshis (including change): {total_output_satoshis}")
+    logger.info(f"Calculated Fee for new transaction: {calculated_fee} satoshis")
+
+    change_output = next((o for o in tx.outputs if o.change), None)
+    change_sats = change_output.satoshis if change_output else 0
+    if 0 < change_sats < MINIMUM_UTXO_VALUE:
+        logger.error(f"DUST ERROR: The calculated change ({change_sats} satoshis) is below the dust limit. Aborting transaction.")
+        return None, None, None, [], [], None
+
+    if total_input_satoshis < calculated_fee:
+        logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_satoshis}, required for fee: {calculated_fee}.")
+        return None, None, None, [], [], None
+
+    tx.sign()
+
+    logger.info(f"New Transaction ID: {tx.txid()}")
+    
+    if dry_run:
+        logger.info("\n--- DRY RUN ---")
+        logger.info(f"Final Calculated Fee: {calculated_fee} satoshis")
+        logger.info(f"Input Satoshis: {total_input_satoshis}")
+        logger.info(f"Change Output: {change_sats} satoshis")
+        logger.info("Transaction will NOT be broadcast. Exiting now.")
+        return tx.hex(), None, None, consumed_utxos_details, [], calculated_fee
+
+    broadcast_txid = await blockchain_api.broadcast_transaction(tx.hex())
+    broadcast_timestamp = datetime.now(timezone.utc).isoformat() if broadcast_txid else None
+
+    new_utxos_details = []
+    if broadcast_txid:
+        for vout_idx, output in enumerate(tx.outputs):
+            if output.locking_script.hex() == P2PKH().lock(recipient_address).hex():
+                new_utxos_details.append({
+                    "txid": tx.txid(),
+                    "vout": vout_idx,
+                    "satoshis": output.satoshis,
+                    "height": -1,
+                    "used": False,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+
+    logger.info(f"--- End of create_op_return_transaction ---")
+    
+    if broadcast_txid:
+        return tx.hex(), broadcast_timestamp, broadcast_txid, consumed_utxos_details, new_utxos_details, calculated_fee
+    else:
+        return None, None, None, [], [], None
+
 
 async def create_op_return_transaction(
         spending_key_wif: str,
@@ -706,7 +881,8 @@ async def create_op_return_transaction(
         tx_store: Dict,
         f_tx_store: IO, 
         note: Optional[str] = None,
-        dry_run: bool = False
+        dry_run: bool = False,
+        no_broadcast: bool = False
 ) -> tuple[Optional[str], Optional[str], Optional[str], List[Dict], List[Dict], Optional[int]]:
     """
     Creates a Bitcoin SV transaction with an OP_RETURN output and returns change.
@@ -775,6 +951,9 @@ async def create_op_return_transaction(
                 # TODO Entfernen: wallet_manager.save_tx_store(f_tx_store, tx_store)
         
         source_tx_obj = Transaction.from_hex(raw_source_tx_hex)
+        if source_tx_obj is None:
+            logger.warning(f"Failed to parse source transaction hex for UTXO {utxo['txid']}. Skipping.")
+            continue
         
         tx_inputs.append(TransactionInput(
             source_transaction=source_tx_obj,
@@ -960,8 +1139,18 @@ async def create_op_return_transaction(
         })
     # TODO entfernen: wallet_manager.save_tx_store(f_tx_store, tx_store)
 
-    broadcast_txid = await blockchain_api.broadcast_transaction(tx.hex())
-    broadcast_timestamp = datetime.now(timezone.utc).isoformat() if broadcast_txid else None
+
+
+    if no_broadcast:
+        # --- NEW --- Simulate a successful broadcast locally
+        logger.info("\n--- NO BROADCAST MODE ---")
+        logger.info("Simulating successful broadcast. Local stores will be updated.")
+        broadcast_txid = tx.txid()
+        broadcast_timestamp = datetime.now(timezone.utc).isoformat()
+    else:
+        # Original broadcast logic
+        broadcast_txid = await blockchain_api.broadcast_transaction(tx.hex())
+        broadcast_timestamp = datetime.now(timezone.utc).isoformat() if broadcast_txid else None
 
     # --- Important: Move UTXO marking logic to the calling function (log_intermediate_result_process) ---
     # The actual marking of UTXOs as used, and storing new UTXOs created by this transaction,
@@ -989,7 +1178,6 @@ async def create_op_return_transaction(
         return tx.hex(), broadcast_timestamp, broadcast_txid, consumed_utxos_details, new_utxos_details, calculated_fee
     else:
         return None, None, None, [], [], None # Return empty lists for UTXO changes on failure
-
 
 
 

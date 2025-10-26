@@ -1,11 +1,8 @@
-# data_services.py
-# Provide foundation to count API requests to control limits 
-#  
-
+# AF_py/data_services.py
 import asyncio
 import logging
 import json
-import httpx  # A modern, async-capable HTTP client library
+import aiohttp  # Use aiohttp instead of httpx
 
 import utils
 from config import Config
@@ -14,8 +11,7 @@ logger = logging.getLogger(__name__)
 
 async def get_coingecko_bsv_price():
     """
-    Fetches the current price for Bitcoin SV in EUR from the CoinGecko API.
-    It now also requests the last_updated_at timestamp from the server.
+    Fetches the current price for Bitcoin SV in EUR from the CoinGecko API using aiohttp.
     It checks the API usage limit before making a call and increments the counter on success.
 
     Returns:
@@ -31,22 +27,32 @@ async def get_coingecko_bsv_price():
     params = {
         'ids': 'bitcoin-cash-sv',
         'vs_currencies': 'eur',
-        'include_last_updated_at': 'true'  # Request the server timestamp
+        'include_last_updated_at': 'true'
     }
     headers = {
         'Accept': 'application/json'
     }
 
+    # aiohttp uses a different timeout object
+    timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
+
     price_data = None
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, headers=headers)
-            response.raise_for_status()  # Will raise an exception for 4xx/5xx status codes
-            price_data = response.json()
-            logger.info(f"Successfully fetched data from CoinGecko: {price_data}")
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, params=params, headers=headers) as response:
+                if response.status == 200:
+                    price_data = await response.json()
+                    logger.info(f"Successfully fetched data from CoinGecko: {price_data}")
+                else:
+                    error_text = await response.text()
+                    logger.error(f"HTTP error occurred while fetching CoinGecko data: {response.status} - {error_text}")
+                    return None
 
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error occurred while fetching CoinGecko data: {e.response.status_code} - {e.response.text}")
+    except asyncio.TimeoutError:
+        logger.error(f"Request to CoinGecko failed: Timeout occurred after {Config.TIMEOUT_CONNECT} seconds.")
+        return None
+    except aiohttp.ClientError as e:
+        logger.error(f"Request to CoinGecko failed: A network client error occurred. Error: {e}")
         return None
     except Exception as e:
         logger.error(f"An unexpected error occurred during CoinGecko API call: {e}")

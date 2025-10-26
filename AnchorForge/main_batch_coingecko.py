@@ -394,6 +394,7 @@ async def main():
     failed_logs = 0
 
     for i in range(start_index, total_requested):
+        looptime = time.time()
         logging.info(f"\n>>> Processing event {i + 1} of {total_requested} <<<")
         
         success = await log_coingecko_price_event(
@@ -444,7 +445,9 @@ async def main():
         # Pause between requests to respect the API rate limit, but not after the last one
         if i < total_requested - 1:
             logging.info(f"Waiting for 3 seconds before next request...")
-            await asyncio.sleep(3)
+            await asyncio.sleep(10)
+        loopendtime = time.time()
+        logging.info(f"Time for loop {i} is {loopendtime - looptime}")
 
     # --- Record end time and calculate duration ---
     end_time = time.time()
