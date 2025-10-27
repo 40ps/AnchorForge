@@ -1571,6 +1571,7 @@ async def audit_record_verifier(log_id: str) -> bool:
         else:
             logger.info(f"  Block Header for '{block_hash}' (height {block_height}) NOT found in local cache. Fetching LIVE from network.")
             live_block_header = await blockchain_api.get_block_header(block_hash)
+
             if live_block_header:
                 header_manager.headers[block_hash] = live_block_header
                 header_manager.save()
@@ -1579,29 +1580,34 @@ async def audit_record_verifier(log_id: str) -> bool:
                 logger.error(f"  SPV Proof: FAIL. Could not fetch live block header for block '{block_hash}'.")
                 overall_success = False
 
-        if not utils.verify_block_hash(live_block_header):
-            logger.error(f"  SPV Proof: FAIL. Live block hash verification failed for block '{block_hash}'. Block header may be invalid.")
-            overall_success = False
-        else:
-            logger.info(f"  Live Block Header Check: PASS. Block hash is valid.")
 
-        merkle_root_from_header = live_block_header.get("merkleroot")
-        if not merkle_root_from_header:
-            logger.error(f"  SPV Proof: FAIL. Merkle root not found in live block header for block '{block_hash}'.")
-            overall_success = False
-        else:
-            merkle_proof_verified = verify_merkle_path(
-                txid, 
-                merkle_proof_data.get("index", 0), 
-                merkle_proof_data.get("nodes", []), 
-                merkle_root_from_header 
-            )
-            if not merkle_proof_verified:
-                logger.error(f"  SPV Proof: FAIL. Merkle path verification failed for TXID '{txid}'.")
+        if live_block_header:
+            if not utils.verify_block_hash(live_block_header):
+                logger.error(f"  SPV Proof: FAIL. Live block hash verification failed for block '{block_hash}'. Block header may be invalid.")
                 overall_success = False
             else:
-                logger.info(f"  SPV Proof: PASS. Transaction is verifiably included in block '{block_hash}'.")
-    
+                logger.info(f"  Live Block Header Check: PASS. Block hash is valid.")
+
+            merkle_root_from_header = live_block_header.get("merkleroot")
+            if not merkle_root_from_header:
+                logger.error(f"  SPV Proof: FAIL. Merkle root not found in live block header for block '{block_hash}'.")
+                overall_success = False
+            else:
+                merkle_proof_verified = verify_merkle_path(
+                    txid, 
+                    merkle_proof_data.get("index", 0), 
+                    merkle_proof_data.get("nodes", []), 
+                    merkle_root_from_header 
+                )
+                if not merkle_proof_verified:
+                    logger.error(f"  SPV Proof: FAIL. Merkle path verification failed for TXID '{txid}'.")
+                    overall_success = False
+                else:
+                    logger.info(f"  SPV Proof: PASS. Transaction is verifiably included in block '{block_hash}'.")
+        else:
+            # header could not be retrieved
+            logger.error(f"  SPV Proof: FAIL. Could not retrieve block header for block '{block_hash}'.")
+            overall_success = False
     logger.info(f"\n### AUDITOR VERIFICATION FOR LOG ID: {log_id} COMPLETE: { 'PASS' if overall_success else 'FAIL' } ###")
     return overall_success  
 
