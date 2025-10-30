@@ -88,6 +88,15 @@ class Config:
 
 
 
+    # --- 
+    # 
+    TSC_PROOF_FIELD = "merkle_proof_tsc_data"
+    TSC_TIMESTAMP_FIELD = "tsc_proof_added_utc"
+    LEGACY_PROOF_FIELD = "merkle_proof_data" # Behalten wir den alten Namen für Klarheit
+    LEGACY_SIZE_FIELD = "merkle_proof_size_bytes"
+    TSC_SIZE_FIELD = "merkle_proof_tsc_size_bytes"
+    LEGACY_PROOF = False
+
 
     # --- Control Behavior (loaded from .env and cast to correct types) ---
     FEE_STRATEGY = int(os.getenv("FEE_STRATEGY", 30))

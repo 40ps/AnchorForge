@@ -79,9 +79,14 @@ async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
                     logging.info(f"HTTP Status Code: {response.status}")
                 
                 if response.status == 200:
-                    txid = await response.text()
+                    txid_raw = await response.text()
                     # The response is sometimes quoted, remove quotes if they exist
-                    txid = txid.strip('"')
+                   # --- MODIFIKATION: Umfassendere Bereinigung ---
+                    # 1. Entfernt alle führenden/folgenden Leerzeichen UND Zeilenumbrüche (\n, \r etc.)
+                    txid_stripped = txid_raw.strip() 
+                    # 2. Entfernt eventuell verbleibende führende/folgende Anführungszeichen
+                    txid = txid_stripped.strip('"') 
+                    # --- ENDE MODIFIKATION ---
                     logging.info(f"Success: Transaction broadcasted with txid: {txid}")
                     return txid
                 else:
@@ -132,14 +137,24 @@ async def get_transaction_status_woc(txid: str) -> Optional[Dict[str, Any]]:
     network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{network_url}/tx/{txid}"
     
+    # DEBUG
+    logger.info(f"Monitor: Attempting to get status for txid {txid} from URL: {url}")
+
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
 
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
                 if response.status == 200:
+                    # DEBUG
+                    logger.info(f"Monitor: Successfully received status 200 for txid {txid}.")
                     return await response.json()
                 else:
+                    # --- DEBUG: Detaillierteres Logging im Fehlerfall ---
+                    response_text = await response.text() # Antworttext immer lesen
+                    logger.warning(f"Monitor: Received status {response.status} for txid {txid} from {url}. Response: {response_text}")
+
+
                     # Specific handling for 404 Not Found, which is a valid state for an unconfirmed tx
                     if response.status == 404:
                         logger.info(f"Transaction {txid} not found on WhatsOnChain (likely not yet confirmed).")
@@ -215,6 +230,25 @@ async def get_block_header_height(height: int) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"An unexpected error occurred in get_block_header_height: {e}")
         return None
+
+async def get_tsc_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
+    """Get the TSC Merkle path for a transaction by its ID from WhatsOnChain."""
+    _record_api_call_and_get_rate()
+    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
+    url = f"{network_url}/tx/{txid}/proof/tsc"
+    timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    await _log_aiohttp_error(response, f"get_merkle_path for {txid}")
+                    return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred in get_merkle_path: {e}")
+        return None
+
 
 async def get_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
     """Get the Merkle path for a transaction by its ID from WhatsOnChain."""

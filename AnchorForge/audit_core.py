@@ -48,7 +48,10 @@ AUDIT_MODE_X509 = b'X' # 'X' for X.509 Certificate
 AUDIT_MODE_NOTE = b'N' # 'N' for a Note or a comment.
 
 # Definiert die logische Struktur des OP_RETURN Payloads für Version 1.
-AUDIT_RECORD_FORMAT_V1 = "anchor-forge-v1:(E,H,S,P)|(X,H,S,C)|(N,T)+"
+AUDIT_RECORD_FORMAT_V1 = "anchor-forge-v1:(xF0,T)|(E,H,S,P)|(X,H,S,C)|(N,T)+"
+
+
+
 
 def load_audit_log(f) -> List[Dict]:
     """
@@ -848,6 +851,9 @@ async def create_op_return_transaction_new_proposal(
         return tx.hex(), None, None, consumed_utxos_details, [], calculated_fee
 
     broadcast_txid = await blockchain_api.broadcast_transaction(tx.hex())
+
+    logger.info(f"c.o.r.t: broadcast_txid = {broadcast_txid}")
+    
     broadcast_timestamp = datetime.now(timezone.utc).isoformat() if broadcast_txid else None
 
     new_utxos_details = []
@@ -1180,6 +1186,16 @@ async def create_op_return_transaction(
         return None, None, None, [], [], None # Return empty lists for UTXO changes on failure
 
 
+def _normalize_proof_data(proof_data):
+    if isinstance(proof_data, list):
+        if len(proof_data) == 1:
+            return proof_data[0]
+        elif len(proof_data) == 0:
+            return None
+        else:
+            logger.warning(f"Proof data has {len(proof_data)} items, using first.")
+            return proof_data[0]
+    return proof_data
 
 async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path: str, polling_interval_seconds: int = 30):
     """
@@ -1257,14 +1273,36 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
             else:
                 logger.info(f"  Monitoring {len(records_to_monitor)} audit records...")
 
+
+
+
             for record in records_to_monitor:
+                # check for stop. When many tx to monitor, it would be blocked otherwise
+                if await utils.check_process_controls('monitor'):
+                    logger.info("Stop requested during record processing loop.")
+                    # signal end of outer loop or break
+                    # using a return
+                    return # Stops monitor completely
+
                 blockchain_rec = record["blockchain_record"]
                 
                 log_id = record["log_id"]
-                txid = blockchain_rec.get("txid") # TXID might be None for "pending_creation" status
 
-                if not txid:
+
+
+
+                txid_raw = blockchain_rec.get("txid") # TXID might be None for "pending_creation" status
+                if not txid_raw: 
                     continue
+                
+                txid = txid_raw.strip().strip('"')
+                if not txid: # is something left after cleaning
+                    logger.warning(f"  Record '{log_id}' has an empty or invalid TXID after stripping. Skipping.")
+                    continue
+
+
+
+
 
                 # --- Handle "pending_creation" status (if create_op_return_transaction didn't broadcast yet) ---
                 # Currently, create_op_return_transaction tries to broadcast immediately.
@@ -1275,19 +1313,57 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                         
                 logger.info(f"  Checking confirmation for audit record '{log_id}' (TXID: {txid})...")
                         
+
                 # API Request (reminder Ensure low request rate)
                 tx_info = await blockchain_api.get_transaction_status_woc(txid)
                 await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST)
 
+
+# Confirmed, now process
                 if tx_info and tx_info.get("blockhash") and tx_info.get("blockheight"):
                     logger.info(f"    Audit record '{log_id}' (TXID {txid}) confirmed in block {tx_info['blockheight']} ({tx_info['blockhash']}).")
 
-                    # API Request (reminder Ensure low request rate)        
-                    merkle_proof_data = await blockchain_api.get_merkle_path(txid)
-                    await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST)
+
+                    legacy_proof_data = None
+                    tsc_proof_data = None
+
+                    legacy_error = False
+                    tsc_error = False
+
+                    # 1. Fetch Legacy Proof (optional, Fallback, possibly for BTC?)
+                    if Config.LEGACY_PROOF: # ignore, prepare for fadeout
+                        try:
+                            legacy_proof_data = _normalize_proof_data(await blockchain_api.get_merkle_path(txid))
+                            
+                            await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST) # Pause
+                        except Exception as e:
+                            logger.error(f"    Error fetching legacy Merkle proof for {log_id}: {e}")
+                            legacy_proof_data = None
+                            legacy_error = True
+
+                    # 2. Fetch TSC Proof (Mainnet only supports new one)
+                    # try:
+                    #     # --- call TSC-Function ---
+                    #     tsc_proof_data = await blockchain_api.get_tsc_merkle_path(txid)
+                    #     await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST) # Pause
+                    # except Exception as e:
+                    #     logger.error(f"    Error fetching TSC Merkle proof for {log_id}: {e}")
+                    #     fetch_error = True 
+                    
+                    try:
+                        # --- call TSC-Function ---
+                        tsc_proof_data = _normalize_proof_data(await blockchain_api.get_tsc_merkle_path(txid))
+                        await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST) # Pause
+
+                    except Exception as e:
+                        logger.error(f"    Error fetching TSC Merkle proof for {log_id}: {e}")
+                        tsc_proof_data = None
+                        tsc_error = True
+
+
 
                     try:
-                        with portalocker.Lock(Config.AUDIT_LOG_FILE,  "r+", flags=LOCK_EX, timeout=5) as f_audit, \
+                        with portalocker.Lock(Config.AUDIT_LOG_FILE,  "r+", flags=LOCK_EX, timeout=10) as f_audit, \
                             portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5) as f_utxo:
 
                             # load data again to ensure work with most uptodate data
@@ -1297,45 +1373,76 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                             # data record to be updated
                             target_record = next((r for r in current_audit_log if r.get("log_id") == log_id), None)
 
+
+
+
+
+
                             if target_record:
-                                # Update the blockchain_record directly within the audit record entry
-                                blockchain_rec = target_record["blockchain_record"]
-                                blockchain_rec["status"] = "confirmed"
-                                blockchain_rec["block_hash"] = tx_info["blockhash"]
-                                blockchain_rec["block_height"] = tx_info["blockheight"]
-                                blockchain_rec["timestamp_confirmed_utc"] = datetime.now(timezone.utc).isoformat()
-                            
-                                if merkle_proof_data:
-                                    blockchain_rec["merkle_proof_data"] = merkle_proof_data
-                                    # --- Calculate and store the size of the Merkle proof ---
-                                    merkle_proof_size_bytes = len(json.dumps(merkle_proof_data).encode('utf-8'))
-                                    blockchain_rec["merkle_proof_size_bytes"] = merkle_proof_size_bytes
+                                # Prevents overwriting if another process confirmed it in the meantime
+                                if target_record.get("blockchain_record", {}).get("status") != "confirmed":
+                                    needs_save = False # Flag ob gespeichert werden muss
+                                    current_bc_rec = target_record["blockchain_record"]
 
-                                    logger.info(f"    Merkle path for '{log_id}' saved to audit_log.")
+                                    current_bc_rec["status"] = "confirmed"
+                                    current_bc_rec["block_hash"] = tx_info["blockhash"]
+                                    current_bc_rec["block_height"] = tx_info["blockheight"]
+                                    current_bc_rec["timestamp_confirmed_utc"] = datetime.now(timezone.utc).isoformat()
+                                    needs_save = True
+
+                                    # old251028 Update the blockchain_record directly within the audit record entry
+                                    # blockchain_rec = target_record["blockchain_record"]
+                                    # blockchain_rec["status"] = "confirmed"
+                                    # blockchain_rec["block_hash"] = tx_info["blockhash"]
+                                    # blockchain_rec["block_height"] = tx_info["blockheight"]
+                                    # blockchain_rec["timestamp_confirmed_utc"] = datetime.now(timezone.utc).isoformat()
+                                
+                                    if Config.LEGACY_PROOF: # only if we want to support it
+                                        if legacy_proof_data:
+                                            current_bc_rec[Config.LEGACY_PROOF_FIELD] = legacy_proof_data
+                                            legacy_size = len(json.dumps(legacy_proof_data).encode('utf-8'))
+                                            current_bc_rec[Config.LEGACY_SIZE_FIELD] = legacy_size
+                                            logger.info(f"    Added legacy proof for {log_id} (Size: {legacy_size} bytes).")
+                                        elif not legacy_error: # only log errors if no general error
+                                            logger.warning(f"    Could not fetch legacy Merkle proof for {log_id}.")
+                                            current_bc_rec[Config.LEGACY_PROOF_FIELD] = {"error": "Legacy proof unavailable"}
+
+                                    # TSC Proof hinzufügen (falls erfolgreich geholt)
+                                    if tsc_proof_data:
+                                        current_bc_rec[Config.TSC_PROOF_FIELD] = tsc_proof_data
+                                        current_bc_rec[Config.TSC_TIMESTAMP_FIELD] = datetime.now(timezone.utc).isoformat()
+                                        tsc_size = len(json.dumps(tsc_proof_data).encode('utf-8'))
+                                        current_bc_rec[Config.TSC_SIZE_FIELD] = tsc_size
+                                        logger.info(f"    Added TSC proof for {log_id} (Size: {tsc_size} bytes).")
+                                    elif not tsc_error: # Nur Fehler loggen, wenn kein genereller Fehler auftrat
+                                        logger.warning(f"    Could not fetch TSC Merkle proof for {log_id}.")
+                                        current_bc_rec[Config.TSC_PROOF_FIELD] = {"error": "TSC proof unavailable"}
+                    
+                                
+                                    # Update UTXO store for newly created UTXOs in this transaction (height)
+                                    # This needs to be loaded and saved specifically by the monitor.
+
+                                
+                                    updated_utxos_count = 0
+                                    for utxo in utxo_store["utxos"]:
+                                        # Check if this UTXO was created by the confirmed transaction and its height is unknown
+                                        if utxo["txid"] == txid and utxo.get("height", -1) == -1: 
+                                            utxo["height"] = tx_info["blockheight"]
+                                            updated_utxos_count += 1
+
+
+                                    if needs_save:
+                                        save_audit_log(f_audit, current_audit_log)
+
+                                        if updated_utxos_count > 0:
+                                            wallet_manager.save_utxo_store(f_utxo, utxo_store)
+                                            logger.info(f"    Updated height for {updated_utxos_count} UTXO(s) from TXID {txid} in local UTXO store.")
+     
+                                        logger.info(f"    Successfully confirmed and updated record '{log_id}'.")
                                 else:
-                                    logger.warning(f"    Could not fetch Merkle path for confirmed record '{log_id}'. Marking as confirmed but incomplete proof.")
-                                    blockchain_rec["merkle_proof_data"] = {"error": "Merkle proof unavailable"}
-                                    blockchain_rec["merkle_proof_size_bytes"] = None # Also explicitly set size to None
-
-                            
-                                # Update UTXO store for newly created UTXOs in this transaction (height)
-                                # This needs to be loaded and saved specifically by the monitor.
-
-                            
-                                updated_utxos_count = 0
-                                for utxo in utxo_store["utxos"]:
-                                    # Check if this UTXO was created by the confirmed transaction and its height is unknown
-                                    if utxo["txid"] == txid and utxo.get("height", -1) == -1: 
-                                        utxo["height"] = tx_info["blockheight"]
-                                        updated_utxos_count += 1
-                                if updated_utxos_count > 0:
-                                    wallet_manager.save_utxo_store(f_utxo, utxo_store)
-                                    logger.info(f"    Updated height for {updated_utxos_count} UTXO(s) from TXID {txid} in local UTXO store.")
-
-                        
-                                save_audit_log(f_audit, current_audit_log)
-                                logger.info(f"    Successfully confirmed and updated record '{log_id}'.")
-
+                                    logger.info(f"   Record '{log_id}' was already marked for confirmed. Skipping update.")
+                            else: logger.warning(f"    Record '{log_id}' not found in audit log during update attempt. Log might have changed.")
+                    
                     except portalocker.exceptions.LockException:
                         logger.warning("Monitor could not acquire lock, skipping this cycle.")
                 elif blockchain_rec["status"] == "broadcasted":
@@ -1353,9 +1460,9 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
             except Exception as e:
                 logger.error(f"Could not fetch block height after initial run:{e}")
 
-        logging.info(f"  ... sleeping for {polling_interval_seconds} seconds.")
+        logger.info(f"  ... sleeping for {polling_interval_seconds} seconds.")
         await asyncio.sleep(polling_interval_seconds)
-    logging.info("--- Monitor worker loop has been stopped gracefully. ---")
+    logger.info("--- Monitor worker loop has been stopped gracefully. ---")
 
 async def audit_record_verifier(log_id: str) -> bool:
     """
@@ -1555,10 +1662,32 @@ async def audit_record_verifier(log_id: str) -> bool:
 
     block_hash = blockchain_rec.get("block_hash")
     block_height = blockchain_rec.get("block_height")
-    merkle_proof_data = blockchain_rec.get("merkle_proof_data")
 
-    if not all([block_hash, merkle_proof_data]):
+    merkle_proof_to_use = None
+    proof_type_used = None
+
+
+    if Config.TSC_PROOF_FIELD in blockchain_rec:
+        merkle_proof_to_use = blockchain_rec[Config.TSC_PROOF_FIELD]
+        proof_type_used = "TSC"
+        logger.info(f"  Using TSC Merkle proof ({Config.TSC_PROOF_FIELD}) for verification.")
+    elif Config.LEGACY_PROOF_FIELD in blockchain_rec:
+        merkle_proof_to_use = blockchain_rec[Config.LEGACY_PROOF_FIELD]
+        proof_type_used = "Legacy"
+        logger.info(f"  Using Legacy Merkle proof ({Config.LEGACY_PROOF_FIELD}) for verification.")
+        
+    # Solution for list[dict]-Problem # TODO fade out
+    # Q: One Level up?
+    if isinstance(merkle_proof_to_use, list) and len(merkle_proof_to_use) == 1 and isinstance(merkle_proof_to_use[0], dict):
+        merkle_proof_to_use = merkle_proof_to_use[0]
+        logger.warning(f"  Corrected legacy proof format from list to dict for verification.")
+
+
+    if not all([block_hash, merkle_proof_to_use]):
         logger.error(f"  SPV Proof: FAIL. Missing essential data for SPV proof in audit record '{log_id}'.")
+        overall_success = False
+    elif not isinstance(merkle_proof_to_use, dict):
+        logger.error(f"  SPV Proof: FAIL. The selected Merkle proof data ({proof_type_used}) is not a dictionary. Type: {type(merkle_proof_to_use)}")
         overall_success = False
     else:
         header_manager = BlockHeaderManager(f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json")
@@ -1593,17 +1722,23 @@ async def audit_record_verifier(log_id: str) -> bool:
                 logger.error(f"  SPV Proof: FAIL. Merkle root not found in live block header for block '{block_hash}'.")
                 overall_success = False
             else:
-                merkle_proof_verified = verify_merkle_path(
-                    txid, 
-                    merkle_proof_data.get("index", 0), 
-                    merkle_proof_data.get("nodes", []), 
-                    merkle_root_from_header 
+                # --- Verwende die ausgewählten Proof-Daten für die Verifizierung ---
+                merkle_proof_verified = verify_merkle_path( # Die bestehende Funktion wird verwendet!
+                    txid,
+                    merkle_proof_to_use.get("index", -1), # Index aus dem Proof holen (-1 als Fehlerindikator)
+                    merkle_proof_to_use.get("nodes", []), # Nodes aus dem Proof holen
+                    merkle_root_from_header
                 )
-                if not merkle_proof_verified:
-                    logger.error(f"  SPV Proof: FAIL. Merkle path verification failed for TXID '{txid}'.")
-                    overall_success = False
+
+                if merkle_proof_to_use.get("index", -1) == -1:
+                         logger.error(f"  SPV Proof: FAIL. 'index' field missing in {proof_type_used} Merkle proof data.")
+                         overall_success = False
+                elif not merkle_proof_verified:
+                        logger.error(f"  SPV Proof: FAIL. Merkle path verification failed for TXID '{txid}'.")
+                        overall_success = False
                 else:
-                    logger.info(f"  SPV Proof: PASS. Transaction is verifiably included in block '{block_hash}'.")
+                        logger.info(f"  SPV Proof: PASS. Transaction is verifiably included in block '{block_hash}'.")
+                
         else:
             # header could not be retrieved
             logger.error(f"  SPV Proof: FAIL. Could not retrieve block header for block '{block_hash}'.")
