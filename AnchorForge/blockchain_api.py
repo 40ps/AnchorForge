@@ -18,6 +18,8 @@ import aiohttp
 
 from config import Config
 
+VERSION = 2511032020
+
 api_call_timestamps = deque()  # Time stamps of last calls
 MEASUREMENT_WINDOW_SECONDS = 60 # time for sliding average 
 
@@ -52,6 +54,32 @@ async def _log_aiohttp_error(response: aiohttp.ClientResponse, context: str):
     except Exception:
         error_message = await response.text()
     logger.error(f"Request failed for {context}: Status {response.status}, Error: {error_message}")
+
+async def api_call(url: str) -> Optional[Dict[str, Any]]:
+    """
+    Central function for an API call using aiohttp.
+    Handles timeouts and basic error logging.
+    """
+    # Use a specific timeout for the connection
+    timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    await _log_aiohttp_error(response, f"api_call to {url}")
+                    return None
+    except aiohttp.ClientConnectorError as e:
+        logger.error(f"Connection Error: Failed to connect to {url}: {e}")
+        return None
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout Error: Request to {url} timed out after {Config.TIMEOUT_CONNECT} seconds.")
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred in api_call for {url}: {e}")
+        return None
+
 
 # --- broadcast_transaction rewritten for aiohttp ---
 async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
@@ -107,11 +135,13 @@ async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
 async def fetch_raw_transaction_hex(txid: str) -> Optional[str]:
     """Fetches the raw transaction hex for a given txid from WhatsOnChain."""
     _record_api_call_and_get_rate()
-    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    url = f"{network_url}/tx/{txid}/hex"
-    
-    timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
+    #network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
+    # url = f"{network_url}/tx/{txid}/hex"
+    url = f"{Config.WOC_API_BASE_URL}/tx/{txid}/hex"
 
+    logger.info(f"API Request URL (fetch_raw_transaction): {url}")
+
+    timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
@@ -134,9 +164,9 @@ async def fetch_raw_transaction_hex(txid: str) -> Optional[str]:
 async def get_transaction_status_woc(txid: str) -> Optional[Dict[str, Any]]:
     """Get the status of a transaction by its ID from WhatsOnChain."""
     _record_api_call_and_get_rate()
-    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    url = f"{network_url}/tx/{txid}"
     
+    url = f"{Config.WOC_API_BASE_URL}/tx/{txid}"
+
     # DEBUG
     logger.info(f"Monitor: Attempting to get status for txid {txid} from URL: {url}")
 
@@ -171,13 +201,12 @@ async def get_transaction_status_woc(txid: str) -> Optional[Dict[str, Any]]:
         logger.error(f"An unexpected error occurred getting status for {txid}: {e}")
         return None
 
-# --- MODIFIED: The rest of the functions are also converted to aiohttp ---
 
 async def get_chain_info_woc() -> Optional[Dict[str, Any]]:
     """Get general blockchain information from WhatsOnChain."""
     _record_api_call_and_get_rate()
-    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    url = f"{network_url}/chain/info"
+    url = f"{Config.WOC_API_BASE_URL}/chain/info"
+    
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -194,14 +223,22 @@ async def get_chain_info_woc() -> Optional[Dict[str, Any]]:
 async def get_block_header(block_hash: str) -> Optional[Dict[str, Any]]:
     """Get block header information by block hash from WhatsOnChain."""
     _record_api_call_and_get_rate()
-    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    url = f"{network_url}/block/{block_hash}/header"
+    url = f"{Config.WOC_API_BASE_URL}/block/hash/{block_hash}"
+    logger.info(f"API Request URL (get_block_header): {url}")
+
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
                 if response.status == 200:
-                    return await response.json()
+                    data = await response.json()
+                    if isinstance(data, dict) and "hash" in data:  # Oder passende Keys
+                        return data
+                    elif isinstance(data, list) and len(data) > 0 and "hash" in data[0]:
+                        return data[0]  # Fallback für Kompatibilität
+                    else:
+                        logger.warning(f"Unexpected response format for hash {url}: {data}")
+                        return None
                 else:
                     await _log_aiohttp_error(response, f"get_block_header for {block_hash}")
                     return None
@@ -212,18 +249,27 @@ async def get_block_header(block_hash: str) -> Optional[Dict[str, Any]]:
 async def get_block_header_height(height: int) -> Optional[Dict[str, Any]]:
     """Get block header information by block height from WhatsOnChain."""
     _record_api_call_and_get_rate()
-    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    url = f"{network_url}/block/height/{height}"
+    url = f"{Config.WOC_API_BASE_URL}/block/height/{height}"
+
+    logger.info(f"API Request URL (get_block_header_height): {url}")
+
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
+                logger.debug(f"API Response Status for {url}: {response.status}")
+                
                 if response.status == 200:
-                    # This endpoint returns a list, we are interested in the first element
                     data = await response.json()
-                    if data and isinstance(data, list):
-                        return data[0]
-                    return None
+                    logger.debug(f"Raw API Response: {data}")
+
+                    if isinstance(data, dict) and "height" in data:  # Oder passende Keys
+                        return data
+                    elif isinstance(data, list) and len(data) > 0 and "height" in data[0]:
+                        return data[0]  # Fallback für Kompatibilität
+                    else:
+                        logger.warning(f"Unexpected response format for {url}: {data}")
+                        return None
                 else:
                     await _log_aiohttp_error(response, f"get_block_header_height for {height}")
                     return None
@@ -234,8 +280,9 @@ async def get_block_header_height(height: int) -> Optional[Dict[str, Any]]:
 async def get_tsc_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
     """Get the TSC Merkle path for a transaction by its ID from WhatsOnChain."""
     _record_api_call_and_get_rate()
-    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    url = f"{network_url}/tx/{txid}/proof/tsc"
+
+    url = f"{Config.WOC_API_BASE_URL}/tx/{txid}/proof/tsc"
+    
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -253,8 +300,9 @@ async def get_tsc_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
 async def get_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
     """Get the Merkle path for a transaction by its ID from WhatsOnChain."""
     _record_api_call_and_get_rate()
-    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    url = f"{network_url}/tx/{txid}/proof"
+    # obsolete network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
+    url = f"{Config.WOC_API_BASE_URL}/tx/{txid}/proof"
+    
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -271,8 +319,8 @@ async def get_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
 async def fetch_utxos_for_address(address: str) -> List[Dict[str, Any]]:
     """Fetch all unspent transaction outputs (UTXOs) for a given address."""
     _record_api_call_and_get_rate()
-    network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    url = f"{network_url}/address/{address}/unspent"
+    # obsolete network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
+    url = f"{Config.WOC_API_BASE_URL}/address/{address}/unspent"
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
