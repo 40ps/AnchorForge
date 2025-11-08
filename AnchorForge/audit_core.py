@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional, IO
 from typing import cast
 from datetime import datetime, timezone
 import uuid # for generating unique identifiers
+import os
 import logging
 import portalocker
 from portalocker import LOCK_EX

@@ -4,7 +4,7 @@
 # - API call history to avoid too many calls
 
 import logging
-from typing import Dict
+from typing import Dict, List, Any
 import httpx
 import json
 from datetime import datetime
@@ -96,6 +96,22 @@ def read_api_usage() -> dict:
          _write_api_usage(counter_data)
         
     return counter_data
+
+
+def ensure_json_file_exists(file_path: str, initial_content: Any = []):
+    """
+    Ensures a file with at least [] exists.
+    Prevents 'FileNotFoundError' e.g. for 'r+' Locks.
+    """
+    if not os.path.exists(file_path):
+        logger.warning(f"Datei nicht gefunden: {file_path}. Erstelle sie neu mit Inhalt: {initial_content}")
+        try:
+            # 'w'-Modus erstellt die Datei.
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(initial_content, f)
+            logger.info(f"Datei erfolgreich erstellt: {file_path}")
+        except Exception as e:
+            logger.error(f"Konnte Datei {file_path} nicht erstellen: {e}", exc_info=True)
 
 def _write_api_usage(data: dict):
     """
