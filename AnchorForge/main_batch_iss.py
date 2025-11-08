@@ -291,6 +291,13 @@ async def main():
     status_data['status'] = 'running'
     utils.write_batch_status(status_data, STATUS_FILE) # Pass status file name
 
+    utils.ensure_json_file_exists(Config.AUDIT_LOG_FILE)
+    
+    # Optionally: same for other critical files
+    utils.ensure_json_file_exists(Config.TX_STORE_FILE)
+    # utils.ensure_json_file_exists(Config.X509_KEYPAIR_STORE_FILE, initial_content={}) # (Da dies ein Dict ist)
+
+
     successful_logs_this_run = 0
     failed_logs = 0
     is_simulation_run = args.no_broadcast # Determine if this is a simulation run

@@ -21,6 +21,7 @@ from portalocker import LOCK_EX
 
 from config import Config
 import wallet_manager
+import utils
 import bank_functions
 import audit_core
 import key_x509_manager # Import the new module
@@ -319,6 +320,11 @@ async def main():
     logging.info(f"Received data content: {data_content}")
     logging.info(f"Received audit record note: {record_note_content}")
     logging.info(f"Received audit tx note: {tx_note_content}")
+
+
+    utils.ensure_json_file_exists(Config.AUDIT_LOG_FILE)
+    utils.ensure_json_file_exists(Config.TX_STORE_FILE)
+    # utils.ensure_json_file_exists(Config.X509_KEYPAIR_STORE_FILE, initial_content={})
 
     # 5. call core function 
     await log_intermediate_result_process(

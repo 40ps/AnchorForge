@@ -389,6 +389,9 @@ async def main():
     status_data['status'] = 'running'
     utils.write_batch_status(status_data)
 
+    utils.ensure_json_file_exists(Config.AUDIT_LOG_FILE)
+    utils.ensure_json_file_exists(Config.TX_STORE_FILE)
+    # utils.ensure_json_file_exists(Config.X509_KEYPAIR_STORE_FILE, initial_content={})
 
     successful_logs_this_run = 0
     failed_logs = 0
