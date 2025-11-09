@@ -46,7 +46,7 @@ def _record_api_call_and_get_rate():
 
 
 # --- helper function for consistent error logging with aiohttp ---
-async def _log_aiohttp_error(response: aiohttp.ClientResponse, context: str):
+async def _log_aiohttp_error_bu251109(response: aiohttp.ClientResponse, context: str):
     """Logs detailed error information from an aiohttp response."""
     try:
         error_data = await response.json()
@@ -54,6 +54,25 @@ async def _log_aiohttp_error(response: aiohttp.ClientResponse, context: str):
     except Exception:
         error_message = await response.text()
     logger.error(f"Request failed for {context}: Status {response.status}, Error: {error_message}")
+
+# --- helper function for consistent error logging with aiohttp ---
+async def _log_aiohttp_error(response: aiohttp.ClientResponse, context: str):
+    """Logs detailed error information from an aiohttp response."""
+    try:
+        error_data = await response.json()
+        error_message = error_data.get('message', str(error_data))
+    except Exception:
+        error_message = await response.text()
+    
+    logger.error(f"Request failed for {context}: Status {response.status}, Error: {error_message}")
+
+    # Check if this error is the specific UTXO-related error
+    if "missing inputs" in error_message.lower() and context == "broadcast_transaction":
+        logger.warning("---------------------------------------------------------------------------------")
+        logger.warning(f"Hint: A 'Missing inputs' error (Status {response.status}) indicates your local UTXO store is out of sync.")
+        logger.warning(f"Hint: Please check UTXO Store consistency with: python utxo_manager.py --address <YourAddress> --network {Config.ACTIVE_NETWORK_NAME} repair")
+        logger.warning("---------------------------------------------------------------------------------")
+
 
 async def api_call(url: str) -> Optional[Dict[str, Any]]:
     """
