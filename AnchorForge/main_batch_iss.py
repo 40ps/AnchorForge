@@ -44,6 +44,8 @@ logging.basicConfig(
 )
 
 # --- CONSTANTS specific to this script ---
+VERSION=0.1
+
 # Default transaction note embedded in the code
 DEFAULT_TX_NOTE = """SPV-based Off-Chain Data Verification
 This tx is part of a series demonstrating scalable, off-chain verifiable audit trails anchored to the blockchain.
@@ -151,6 +153,7 @@ async def log_iss_location_event(
             audit_record_entry = {
                 "log_id": str(uuid.uuid4()),
                 "keyword": keyword, # Use the passed keyword
+                "data_storage_mode": "embedded",
                 "original_audit_content": data_content_string,
                 "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
                 "format": audit_core.AUDIT_RECORD_FORMAT_V1,
