@@ -4,7 +4,7 @@
 # - API call history to avoid too many calls
 
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import httpx
 import json
 from datetime import datetime
@@ -15,9 +15,9 @@ import asyncio
 
 from bsv.hash import hash256 # Assuming hash256 is used by verify_block_hash
 from bsv import Transaction # Assuming Transaction is used by deserialize_and_print_transaction
-import base58 # Add to imports
-import hashlib # Add to imports
-from bsv import Script # Add to imports if Script is used directly here
+import base58 
+import hashlib 
+from bsv import Script
 
 from bsv import (
     PrivateKey,
@@ -29,6 +29,8 @@ from bsv import (
 from bsv.hash import sha256 # Import sha256 function directly from bsv.hash module
 
 from config import Config
+
+VERSION=0.1
 
 API_COUNTER_FILE = "api_usage_counter.json"  # To avoid overusing API
 STATUS_FILE = "coingecko_batch_status.json"  # for recovery mechanism
@@ -59,6 +61,31 @@ def get_content_from_source(source: str | None) -> str | None:
             sys.exit(1) # Exit script on file read error
     # If it's not a file path, assume it's the direct content string
     return source
+
+async def hash_file_async(filepath: str, block_size: int = 65536) -> Optional[bytes]:
+    """
+    Hashes a file asynchronously using SHA-256 without blocking the event loop.
+    Reads the file in chunks. Returns raw bytes.
+    """
+    try:
+        def read_and_hash():
+            # This blocking I/O runs in a separate thread
+            hash_obj = hashlib.sha256()
+            with open(filepath, 'rb') as f:
+                while chunk := f.read(block_size):
+                    hash_obj.update(chunk)
+            return hash_obj.digest() # Gibt rohe bytes zurück
+
+        # Run the blocking file I/O in asyncio's default thread pool
+        return await asyncio.to_thread(read_and_hash)
+    
+    except FileNotFoundError:
+        logger.error(f"[hash_file_async] File not found at: {filepath}")
+        return None
+    except Exception as e:
+        logger.error(f"[hash_file_async] Error hashing file {filepath}: {e}", exc_info=True)
+        return None
+
 
 def read_api_usage() -> dict:
     """
