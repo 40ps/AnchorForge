@@ -176,6 +176,7 @@ async def log_coingecko_price_event(dry_run: bool = False, keyword: str = "defau
             audit_record_entry = {
                 "log_id": str(uuid.uuid4()),
                 "keyword": keyword, 
+                "data_storage_mode": "embedded",
                 "original_audit_content": data_content_string,
                 "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
                 "format": audit_core.AUDIT_RECORD_FORMAT_V1,
