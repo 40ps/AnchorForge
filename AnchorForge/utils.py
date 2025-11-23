@@ -30,6 +30,7 @@ from bsv.hash import sha256 # Import sha256 function directly from bsv.hash modu
 
 from config import Config
 
+VIBECODEVERSION=0.1
 VERSION=0.1
 
 API_COUNTER_FILE = "api_usage_counter.json"  # To avoid overusing API
