@@ -113,6 +113,9 @@ class Config:
     TIMEOUT_CONNECT = 10.0
 
 
+    # AUDIT SETTINGS
+    AUDIT_INCLUDING_FILES = True
+    
     # Check if critical secrets are missing
     if not all([PRIVATE_KEY_WIF, UTXO_STORE_KEY_WIF, PRIVATE_BANK_KEY_WIF, PRIVATE_SIGNING_KEY_WIF]):
         raise ValueError("One or more critical private keys are missing. Check your .env file.")
