@@ -48,18 +48,28 @@ def get_content_from_source(source: str | None) -> str | None:
         source (str | None): The input string or a path to a file.
 
     Returns:
-        str | None: The content as a string, or None if input was None. Exits on file read error.
+        str | None: The content as a string, or None if input was None. 
+                    Exits on file read error.
     """
     if source is None:
         return None
-    if os.path.isfile(source):
+    
+    # 1. Explicit File Reference
+    if source.startswith('@'):
+        file_path = source[1:]
+    elif os.path.isfile(source):
+        file_path = source
+    else:
+        file_path = None
+
+    if file_path:
         try:
             with open(source, 'r', encoding='utf-8') as f:
                 return f.read()
         except Exception as e:
             # Using logger if available, otherwise print
             logger.error(f"Error reading file {source}: {e}") if 'logger' in globals() else print(f"Error reading file {source}: {e}")
-            sys.exit(1) # Exit script on file read error
+            sys.exit(1) 
     # If it's not a file path, assume it's the direct content string
     return source
 
