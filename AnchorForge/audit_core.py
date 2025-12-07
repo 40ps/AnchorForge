@@ -1,9 +1,15 @@
 # audit_core.py
+# DEPRECATED:
+# replaced by m
+#   audit_publisher, 
+#   audit_service, 
+#   audit_verifier, 
+#   audit_common
+# remains for historic reasons
 
 import asyncio
 import json
-from typing import List, Dict, Any, Optional, IO
-from typing import cast
+from typing import List, Dict, Any, Optional, IO, cast
 from datetime import datetime, timezone
 import uuid # for generating unique identifiers
 import os
@@ -40,7 +46,7 @@ from cryptography.hazmat.backends import default_backend
 
 logger = logging.getLogger(__name__)
 
-VIBECODEVERSION=0.5
+VIBECODEVERSION=0.6
 
 # --- AUDIT MODE CONSTANTS FOR SELF-DESCRIBING PAYLOADS ---
 # These single-byte identifiers are a key component of the new, flexible
@@ -51,10 +57,8 @@ AUDIT_MODE_EC = b'E' # 'E' for Elliptic Curve Digital Signature Algorithm (ECDSA
 AUDIT_MODE_X509 = b'X' # 'X' for X.509 Certificate
 AUDIT_MODE_NOTE = b'N' # 'N' for a Note or a comment.
 
-# Definiert die logische Struktur des OP_RETURN Payloads für Version 1.
+# logic structure ofs OP_RETURN Payloads for Version.
 AUDIT_RECORD_FORMAT_V1 = "anchor-forge-v1:(xF0,T)|(E,H,S,P)|(X,H,S,C)|(N,T)+"
-
-
 
 
 def load_audit_log(f) -> List[Dict]:
@@ -63,7 +67,7 @@ def load_audit_log(f) -> List[Dict]:
     ASSUMES THE CALLING FUNCTION MANAGES THE FILE LOCK.
     """
     try:
-        f.seek(0) # Sicherstellen, dass vom Anfang gelesen wird
+        f.seek(0)           # read from beginning!
         return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
@@ -77,8 +81,8 @@ def save_audit_log(f, audit_records: List[Dict]):
     json.dump(audit_records, f, indent=4)
     f.truncate()
 
-
-def print_op_return_scriptpubkey (script: Script):   #_bu251015
+# region Utility / Debugging - still buggy
+def print_op_return_scriptpubkey (script: Script):   #_bu251015  # TODO contains an error
     """
     Prints a human-readable form of the OP_RETURN scriptPubKey.
     It iterates through the script chunks to identify and display
@@ -146,7 +150,10 @@ def print_op_return_scriptpubkey (script: Script):   #_bu251015
             else:
                 logger.info(f"  Element {i+1}: (Unexpected Opcode format) {chunk_op_raw_inner}")
 
-   
+
+#endregion Utility / Debug
+
+# region --- Verification Logic --- 
 def verify_merkle_path(txid: str, index: int, nodes: List[str], target: str) -> bool:
     """
     Verifies if a TxID is included in a block based on the Merkle path.
@@ -161,44 +168,46 @@ def verify_merkle_path(txid: str, index: int, nodes: List[str], target: str) -> 
         bool: True if the transaction is included in the block, otherwise False.
     """
     try:
+        
         current_hash = bytes.fromhex(txid)[::-1]
+
         logger.info(f"Starting hash (TxID, Little-Endian): {current_hash.hex()}")
 
-        # Verarbeite den Merkle-Pfad
         current_index = index
         for i, node in enumerate(nodes):
             node_hash = bytes.fromhex(node)[::-1]
             logger.info(f"Node {i+1} (Little-Endian): {node_hash.hex()}")
 
-            # Entscheide, ob der aktuelle Hash links oder rechts im Baum steht
+            # Is actual hash left or right in tree
             if current_index % 2 == 0:
                 combined = current_hash + node_hash
             else:
                 combined = node_hash + current_hash
+
             logger.debug(f"Combined hash: {combined.hex()}")
 
-            # Berechne den doppelten SHA256-Hash
+            # compute double SHA256-Hash
             current_hash = hash256(combined)
+
             logger.debug(f"New hash after hash256 (Little-Endian): {current_hash.hex()}")
 
-            current_index //= 2  # Gehe eine Ebene höher im Baum
+            current_index //= 2  # move on level up in the tree
 
-        # Konvertiere die berechnete Merkle-Root in Big-Endian für den Vergleich
+        # convert Merkle root computed into Bit Endian for comparison
         calculated_root = current_hash[::-1].hex()
+
         logger.info(f"Calculated Merkle Root (Big-Endian): {calculated_root}")
         logger.info(f"Target Merkle Root (Big-Endian): {target}")
+        
         return calculated_root == target
     except ValueError as e:
         logger.error(f"Error processing hex data: {e}")
         return False
+# endregion
 
+# region --- Payload Builders ---
 
-# --- Builders ---
-
-def build_audit_payload(
-    intermediate_result_data: str, # Or Dict, or custom Object, depending on your data
-    signing_key_wif: str
-) -> List[bytes]:
+def build_audit_payload(intermediate_result_data: str, signing_key_wif: str ) -> List[bytes]:
     """
     Builds the OP_RETURN payload (mode, hash, signature, public key) for an audit record.
 
@@ -214,31 +223,11 @@ def build_audit_payload(
     # Convert input data to bytes for hashing
     data_bytes_for_hash = intermediate_result_data.encode('utf-8')
     audit_hash = sha256(data_bytes_for_hash)
-    
-    # Perform signing
-    private_signing_key_obj = PrivateKey(signing_key_wif, network=Config.ACTIVE_NETWORK_BSV)
-    public_signing_key_obj = private_signing_key_obj.public_key()
-    audit_signature = private_signing_key_obj.sign(audit_hash)
 
-    logger.info(f"\n--- Building Audit Payload (ECDSA) ---")
-    logger.info(f"  Data to Hash: '{intermediate_result_data}'")
-    logger.info(f"  Generated Hash: {audit_hash.hex()}")
-    logger.info(f"  Signing Public Key: {public_signing_key_obj.hex()}")
-    logger.info(f"  Generated Signature: {audit_signature.hex()}")
-
-    if public_signing_key_obj.verify(audit_signature, audit_hash):
-        logger.info("  Initial Signature Verification (Payload Build): PASS")
-    else:
-        logger.error("  Initial Signature Verification (Payload Build): FAIL")
-        # You might want to raise an error here if verification fails
+    logger.info(f"  Generated Hash from local data: {audit_hash.hex()}")
 
     # Return the payload as a list of bytes, prepending the mode byte
-    return [
-        AUDIT_MODE_EC,
-        audit_hash,
-        audit_signature, # Ensure Signature object is converted to bytes
-        public_signing_key_obj.serialize() # Ensure PublicKey object is converted to bytes
-    ]
+    return build_audit_payload_prehashed(audit_hash, signing_key_wif)
 
 def build_audit_payload_prehashed(
     precomputed_hash: bytes,    
@@ -246,7 +235,6 @@ def build_audit_payload_prehashed(
 ) -> List[bytes]:
     """
     Builds the OP_RETURN payload (mode, hash, signature, public key) for an audit record.
-
 
     Args:
         signing_key_wif (str): The WIF of the private key used to sign the hash.
@@ -256,7 +244,6 @@ def build_audit_payload_prehashed(
         List[bytes]: A list containing the mode (bytes), hash (bytes), signature (bytes),
                      and public key (bytes) ready for OP_RETURN.
 
-    TODO to be improved, quick shot for extension
     """
 
     audit_hash = precomputed_hash
@@ -276,7 +263,6 @@ def build_audit_payload_prehashed(
         logger.info("  Initial Signature Verification (Payload Build): PASS")
     else:
         logger.error("  Initial Signature Verification (Payload Build): FAIL")
-        # You might want to raise an error here if verification fails
 
     # Return the payload as a list of bytes, prepending the mode byte
     return [
@@ -312,68 +298,20 @@ def build_x509_audit_payload(
     """
     logger.info("\n--- Building Audit Payload (X.509) ---")
 
-    try:
-        # 1. Convert input data to bytes for hashing
-        data_bytes_for_hash = intermediate_result_data.encode('utf-8')
-        audit_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
-        audit_hash.update(data_bytes_for_hash)
-        final_hash_bytes = audit_hash.finalize()
-        
-        # 2. Load the private key for signing
-        private_key = serialization.load_pem_private_key(
-            private_key_pem.encode('utf-8'),
-            password=None,
-            backend=default_backend()
-        )
-        
-        # Check if the key is an RSA key instance
-        if not isinstance(private_key, rsa.RSAPrivateKey):
-            raise TypeError(f"Invalid private key type: expected RSA, got {type(private_key).__name__}. The sign method with PSS padding is only available for RSA keys.")
+    # 1. Convert input data to bytes for hashing
+    data_bytes_for_hash = intermediate_result_data.encode('utf-8')
 
-        # 3. Sign the hash using the private key
-        signature = private_key.sign(
-            final_hash_bytes,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.MAX_LENGTH
-            ),
-            hashes.SHA256()
-        )
-        
-        # 4. Convert certificate PEM string to bytes
-        certificate_bytes = certificate_pem.encode('utf-8')
-        
-        logger.info(f"  Data to Hash: '{intermediate_result_data}'")
-        logger.info(f"  Generated Hash: {final_hash_bytes.hex()}")
-        logger.info(f"  Signature (truncated): {signature.hex()[:20]}...")
-        
-        # 5. Verify the signature locally before returning
-        try:
-            public_key = private_key.public_key()
-            public_key.verify(
-                signature,
-                final_hash_bytes,
-                padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=padding.PSS.MAX_LENGTH
-                ),
-                hashes.SHA256()
-            )
-            logger.info("  Initial Signature Verification (Payload Build): PASS")
-        except Exception as e:
-            logger.error(f"  Initial Signature Verification (Payload Build): FAIL - {e}")
+    audit_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
+    audit_hash.update(data_bytes_for_hash)
 
-        # 6. Return the payload as a list of bytes, prepending the mode byte
-        return [
-            AUDIT_MODE_X509,
-            final_hash_bytes,
-            signature,
-            certificate_bytes
-        ]
+    final_hash_bytes = audit_hash.finalize()
+    
+    logger.info(f"  Data to Hash: '{intermediate_result_data}'")
+    logger.info(f"  Generated Hash: {final_hash_bytes.hex()}")
+
+    return build_x509_audit_payload_prehashed(final_hash_bytes, private_key_pem, certificate_pem)
         
-    except Exception as e:
-        logger.error(f"Error building X.509 audit payload: {e}")
-        return []
+    
 
 
 def build_x509_audit_payload_prehashed(
@@ -402,7 +340,7 @@ def build_x509_audit_payload_prehashed(
     try:
         final_hash_bytes = precomputed_hash  # here replaced hash derivation from input
         # Note:
-        # Ensure it replaces:
+        # Ensure it replaces:  (from build_x509audit_payload() )
         # data_bytes_for_hash = intermediate_result_data.encode('utf-8')
         # audit_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
         # audit_hash.update(data_bytes_for_hash)
@@ -464,6 +402,116 @@ def build_x509_audit_payload_prehashed(
     except Exception as e:
         logger.error(f"Error building X.509 audit payload: {e}")
         return []
+#endregion
+
+# region --- Transaction Creation Logic
+
+
+
+async def _fetch_inputs_for_amount(
+    target_amount_satoshis: int,
+    current_utxo_store_data: Dict, 
+    tx_store: Dict,
+    spending_key_wif: str,
+    network: Network
+) -> tuple[List[TransactionInput], int, List[Dict]]:
+    """
+    Selects UTXOs and prepares TransactionInputs to cover the target amount.
+    Returns: (inputs, total_input_satoshis, consumed_utxo_details)
+    """
+
+    MINIMUM_UTXO_VALUE = 546
+    available_utxos = [utxo for utxo in current_utxo_store_data["utxos"] if not utxo["used"] and utxo["satoshis"] >= MINIMUM_UTXO_VALUE]
+        
+    if not available_utxos:
+        # TODO <recipient address>
+        logger.error(f"No suitable UTXOs available for <recipient_address> to cover fees. Please fund the address.")
+        return [], 0, []
+
+    # 2. prepare transaction inputs from all available UTXO until sufficient funds
+    tx_inputs = []
+    total_input_satoshis = 0
+    consumed_utxos_details = []
+    priv_key = PrivateKey(spending_key_wif, network)
+
+
+    for utxo in available_utxos:
+        
+        # Retrieve rawtx for the selected UTXO's txid from tx_store
+        raw_source_tx_hex = None
+        for tx_entry in tx_store["transactions"]:
+            if tx_entry["txid"] == utxo['txid']:
+                raw_source_tx_hex = tx_entry['rawtx']
+                break
+        # Question: Is the following identical?
+        # raw_source_tx_hex = next((t['rawtx'] for t in tx_store["transactions"] if t["txid"] == utxo['txid']), None)
+
+        if raw_source_tx_hex is None:
+            logger.warning(f"Warning: Raw transaction for UTXO {utxo['txid']} not in cache. Fetching from network.")
+            raw_source_tx_hex = await blockchain_api.fetch_raw_transaction_hex(utxo['txid'])
+
+            if not raw_source_tx_hex or raw_source_tx_hex == "0":
+                logger.warning(f"Skipping UTXO {utxo['txid']}:{utxo['vout']} due to failure to get source transaction hex.")
+                continue 
+
+            # only add when not yet in store
+            if not any(tx['txid'] == utxo['txid'] for tx in tx_store["transactions"]):
+                tx_store["transactions"].append({
+                    "txid": utxo['txid'], 
+                    "rawtx": raw_source_tx_hex,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                # TODO Entfernen: wallet_manager.save_tx_store(f_tx_store, tx_store)
+        
+        source_tx_obj = Transaction.from_hex(raw_source_tx_hex)
+        if source_tx_obj is None:
+            logger.warning(f"Failed to parse source transaction hex for UTXO {utxo['txid']}. Skipping.")
+            continue
+        
+        tx_inputs.append(TransactionInput(
+            source_transaction=source_tx_obj,
+            source_txid=utxo['txid'],
+            source_output_index=utxo['vout'],
+            unlocking_script_template=cast(UnlockingScriptTemplate, P2PKH().unlock(priv_key))
+        ))
+        total_input_satoshis += utxo['satoshis']
+        consumed_utxos_details.append(utxo)
+
+        # Only ask for sufficient UTXOs, ignore all others
+        if total_input_satoshis >= Config.LOGGING_UTXO_THRESHOLD:
+            break
+
+    return tx_inputs, total_input_satoshis, consumed_utxos_details
+
+def _build_op_return_script(data_pushes: List[bytes], note: Optional[str] = None) -> Optional[Script]:
+    """Constructs the OP_FALSE OP_RETURN script with appropriate push opcodes."""
+    script_bytes = bytes.fromhex("006a") # OP_FALSE OP_RETURN
+
+    all_pushes = list(data_pushes)
+    if note:
+        all_pushes.extend([AUDIT_MODE_NOTE, note.encode('utf-8')])
+
+    for data in all_pushes:
+        length = len(data)
+        if length < 76:
+            script_bytes += bytes([length])
+        elif length <= 255:
+            script_bytes += bytes.fromhex("4c") + length.to_bytes(1, 'little')
+        elif length <= 65535:
+            script_bytes += bytes.fromhex("4d") + length.to_bytes(2, 'little')
+        elif length <= 4294967295:
+            script_bytes += bytes.fromhex("4e") + length.to_bytes(4, 'little')
+        else:
+            logger.error("Data push too large.")
+            return None
+        script_bytes += data
+    
+    return Script(script_bytes.hex())
+
+
+
+
+
 
 def verify_payload_integrity(payload_pushes: List[bytes], original_content: str) -> bool:
     """
@@ -537,8 +585,8 @@ def verify_payload_integrity(payload_pushes: List[bytes], original_content: str)
     return True
 
 
-
-def extract_op_return_payload_correct_25_08_25(raw_tx_hex: str) -> List[bytes]:
+# --- Payload Extraction & Verification 
+def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
     """
     Extracts all data pushes from the first OP_RETURN output in a raw transaction.
     This corrected version manually parses the script bytes to correctly handle
@@ -581,12 +629,12 @@ def extract_op_return_payload_correct_25_08_25(raw_tx_hex: str) -> List[bytes]:
             current_index = start_index # Start after [OP_FALSE] OP_RETURN-Opcode (0x6a)
 
             while current_index < len(script_bytes):
-                # Lesen des Längen-Bytes (oder Opcode)
+                # read length byte (or Opcode)
                 length_or_opcode = script_bytes[current_index]
                 current_index += 1
 
                 if 0x01 <= length_or_opcode <= 0x4b:
-                    # Direkte Daten-Push (OP_1 bis OP_75)
+                    # Direce Data-Push (OP_1 - OP_75)
                     data_length = length_or_opcode
                     data_push_end = current_index + data_length
                     data_pushes.append(script_bytes[current_index:data_push_end])
@@ -625,9 +673,6 @@ def extract_op_return_payload_correct_25_08_25(raw_tx_hex: str) -> List[bytes]:
         logger.error(f"An unexpected error occurred during payload extraction: {e}")
         return []
 
-def extract_op_return_payload(raw_tx_hex: str) -> List[bytes]:
-    # TODO clean up
-    return extract_op_return_payload_correct_25_08_25(raw_tx_hex)
 
 def verify_ec_payload(payload: List[bytes], original_content: str) -> bool:
     """
@@ -763,68 +808,23 @@ async def create_op_return_transaction(
     """
     logger.info(f"\n--- Creating OP_RETURN Transaction from {recipient_address} ---")
     
-    # 1. Load local stores here, as this function manages their state updates.
-    # TODO: remove on success: current_utxo_store_data = wallet_manager.load_utxo_store(utxo_file_path)
-    # TODO: remove on success: tx_store = wallet_manager.load_tx_store(tx_file_path)
-
-    MINIMUM_UTXO_VALUE = 546
-    available_utxos = [utxo for utxo in current_utxo_store_data["utxos"] if not utxo["used"] and utxo["satoshis"] >= MINIMUM_UTXO_VALUE]
-        #               Config.FEE_STRATEGY * 5]
-    if not available_utxos:
-        logger.error(f"No suitable UTXOs available for {recipient_address} to cover fees. Please fund the address.")
+    op_return_script = _build_op_return_script(op_return_data_pushes, note)
+    if not op_return_script:
         return None, None, None, [], [], None
 
-    # 2. prepare transaction inputs from all available UTXO until sufficient funds
-    tx_inputs = []
-    total_input_satoshis = 0
-    consumed_utxos_details = []
-    priv_key = PrivateKey(spending_key_wif, network)
+    logger.info(f"OP_RETURN script (Hex): {op_return_script.hex()}")
+    
+    print_op_return_scriptpubkey(op_return_script) # TODO buggy!
 
-    for utxo in available_utxos:
-        
-        # emergency solution: raw_source_tx_hex = await blockchain_api.fetch_raw_transaction_hex(utxo['txid'])
 
-        # Retrieve rawtx for the selected UTXO's txid from tx_store
-        raw_source_tx_hex = None
-        for tx_entry in tx_store["transactions"]:
-            if tx_entry["txid"] == utxo['txid']:
-                raw_source_tx_hex = tx_entry['rawtx']
-                break
 
-        if raw_source_tx_hex is None:
-            logger.warning(f"Warning: Raw transaction for UTXO {utxo['txid']} not in cache. Fetching from network.")
-            raw_source_tx_hex = await blockchain_api.fetch_raw_transaction_hex(utxo['txid'])
+    # 2. Prepare Inputs
+    # We ask for a bit more than strictly necessary to be safe with fees initially
+    TARGET_INPUT_AMOUNT = Config.LOGGING_UTXO_THRESHOLD 
+    tx_inputs, total_input_sats, consumed_details = await _fetch_inputs_for_amount(
+        TARGET_INPUT_AMOUNT, current_utxo_store_data, tx_store, spending_key_wif, network
+    )
 
-            if not raw_source_tx_hex or raw_source_tx_hex == "0":
-                logger.warning(f"Skipping UTXO {utxo['txid']}:{utxo['vout']} due to failure to get source transaction hex.")
-                continue 
-
-            # only add when not yet in store
-            if not any(tx['txid'] == utxo['txid'] for tx in tx_store["transactions"]):
-                tx_store["transactions"].append({
-                    "txid": utxo['txid'], 
-                    "rawtx": raw_source_tx_hex,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
-                # TODO Entfernen: wallet_manager.save_tx_store(f_tx_store, tx_store)
-        
-        source_tx_obj = Transaction.from_hex(raw_source_tx_hex)
-        if source_tx_obj is None:
-            logger.warning(f"Failed to parse source transaction hex for UTXO {utxo['txid']}. Skipping.")
-            continue
-        
-        tx_inputs.append(TransactionInput(
-            source_transaction=source_tx_obj,
-            source_txid=utxo['txid'],
-            source_output_index=utxo['vout'],
-            unlocking_script_template=cast(UnlockingScriptTemplate, P2PKH().unlock(priv_key))
-        ))
-        total_input_satoshis += utxo['satoshis']
-        consumed_utxos_details.append(utxo)
-
-        # Only ask for sufficient UTXOs, ignore all others
-        if total_input_satoshis >= Config.LOGGING_UTXO_THRESHOLD:
-            break
 
     if not tx_inputs:
         logger.warning(f"No usable UTXOs found for address {recipient_address} after fetching source transactions. Cannot create transaction.")
@@ -833,75 +833,18 @@ async def create_op_return_transaction(
     if original_audit_content_string is not None:
         logger.info(f"  Attempting to create transaction for content: '{original_audit_content_string}'")
 
-    # 3. Create the OP_FALSE OP_RETURN output with correct OP_PUSHDATA logic
-    op_return_script_bytes = bytes.fromhex("006a") # OP_FALSE (0x00) OP_RETURN (0x6a)
-
-    for data_bytes in op_return_data_pushes:
-        data_length = len(data_bytes)
-        
-        if data_length < 76:
-            op_return_script_bytes += bytes([data_length])
-        elif data_length <= 255:
-            op_return_script_bytes += bytes.fromhex("4c") + data_length.to_bytes(1, byteorder='little')
-        elif data_length <= 65535:
-            op_return_script_bytes += bytes.fromhex("4d") + data_length.to_bytes(2, byteorder='little')
-        elif data_length <= 4294967295:
-            op_return_script_bytes += bytes.fromhex("4e") + data_length.to_bytes(4, byteorder='little')
-        else:
-            logger.error("Data push is too large for a valid script.")
-            return None, None, None, [], [], None
-        
-        op_return_script_bytes += data_bytes
-    
-
-
-    # Add optional note if it exists
-    if note:
-        note_payload = [
-            AUDIT_MODE_NOTE,
-            note.encode('utf-8')
-        ]
-        for data_bytes in note_payload:
-            data_length = len(data_bytes)
-
-            if data_length < 76:
-                op_return_script_bytes += bytes([data_length])
-            elif data_length <= 255:
-                op_return_script_bytes += bytes.fromhex("4c") + data_length.to_bytes(1, byteorder='little')
-            elif data_length <= 65535:
-                op_return_script_bytes += bytes.fromhex("4d") + data_length.to_bytes(2, byteorder='little')
-            elif data_length <= 4294967295:
-                op_return_script_bytes += bytes.fromhex("4e") + data_length.to_bytes(4, byteorder='little')
-            else:
-                logger.error("Note data push is too large for a valid script.")
-                return None, None, None, [], [], None
-
-            op_return_script_bytes += data_bytes
-
-
-    
-    op_return_script = Script(op_return_script_bytes.hex())
-    
-    logger.info(f"OP_RETURN script (Hex): {op_return_script.hex()}")
-    
-    print_op_return_scriptpubkey(op_return_script) 
-
-    tx_output_op_return = TransactionOutput(
-        locking_script=op_return_script,
-        satoshis=0, # OP_RETURN outputs are unspendable and have 0 value
-        change=False 
-    )
-
-    # 4. Create the change output back to the sender
-    tx_output_change = TransactionOutput(
-        locking_script=P2PKH().lock(recipient_address),
-        satoshis=1, # Dummy value, bsv-sdk overwrites is with actual change
-        change=True # Mark as change output for automatic fee calculation
-    )
+    # OP_RETURN outputs are unspendable and have 0 value
+    # Dummy value, bsv-sdk overwrites is with actual change
+    # Mark as change output for automatic fee calculation
+    tx_outputs = [
+        TransactionOutput(locking_script=op_return_script, satoshis=0, change=False),
+        TransactionOutput(locking_script=P2PKH().lock(recipient_address), satoshis=1, change=True)
+    ]
 
     # 5. Assemble the transaction
-    tx = Transaction(tx_inputs, [tx_output_op_return, tx_output_change])
+    tx = Transaction(tx_inputs, tx_outputs)
 
+    #region Debug Outputs + Satoshis
     logger.info("\n--- DEBUG: Transaction Outputs IMMEDIATELY after assembly ---")
     if not tx.outputs:
         logger.info("    No outputs found in transaction immediately after assembly.")
@@ -910,63 +853,63 @@ async def create_op_return_transaction(
             is_op_return_flag = " (OP_RETURN)" if output.locking_script.chunks and output.locking_script.chunks[0].op == 0x6a else ""
             logger.info(f"    Output {i}: Satoshis={output.satoshis}, Script ASM={output.locking_script.to_asm()}{is_op_return_flag}")
     logger.info("------------------------------------------------------------")
+    #endregion
 
-    # temporary sign first to get real data
-    # tx.sign()
     
     tx.fee(SatoshisPerKilobyte(value=Config.FEE_STRATEGY)) 
 
+
+
     # After tx.fee() has been called, retrieve the fee by summing inputs and subtracting outputs.
     # This is the most reliable way to get the *actual* fee determined by the SDK.
-    total_output_satoshis = sum(output.satoshis for output in tx.outputs)
-    calculated_fee = total_input_satoshis - total_output_satoshis
+    total_output_sats = sum(output.satoshis for output in tx.outputs)
+    calculated_fee = total_input_sats - total_output_sats
     
-    logger.info(f"Total Input Satoshis: {total_input_satoshis}")
-    logger.info(f"Total Output Satoshis (including OP_RETURN and change): {total_output_satoshis}")
+    logger.info(f"Total Input Satoshis: {total_input_sats}")
+    logger.info(f"Total Output Satoshis (including OP_RETURN and change): {total_output_sats}")
     logger.info(f"Calculated Fee for new transaction: {calculated_fee} satoshis")
     
     # Check if there are enough funds for the OP_RETURN output (0 satoshis) + fee
     # And critically, if there's enough for a reasonable change output.
     # The SDK handles the change output automatically, so we just need to ensure inputs cover it.
-    if total_input_satoshis < calculated_fee:
-        logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_satoshis}, required for fee: {calculated_fee}.")
+    if total_input_sats < calculated_fee:
+        logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_sats}, required for fee: {calculated_fee}.")
         return None, None, None, [], [], calculated_fee
     
-    change_output_satoshis = tx_output_change.satoshis
-    if change_output_satoshis < 1 and change_output_satoshis != 0: 
-        logger.warning(f"Warning: Calculated change output ({change_output_satoshis} satoshis) is too low. It might be discarded by miners or not be a valid UTXO.")
+    change_output_sats = tx_outputs[1].satoshis
+
+    if change_output_sats < 1 and change_output_sats != 0: 
+        logger.warning(f"Warning: Calculated change output ({change_output_sats} satoshis) is too low. It might be discarded by miners or not be a valid UTXO.")
 
 
-    if 0 < change_output_satoshis < 546: # 546 is the default dust limit for P2PKH
-        logger.error(f"DUST ERROR: The calculated change ({change_output_satoshis} satoshis) is below the dust limit. Aborting transaction.")
+    if 0 < change_output_sats < 546: # 546 is the default dust limit for P2PKH
+        logger.error(f"DUST ERROR: The calculated change ({change_output_sats} satoshis) is below the dust limit. Aborting transaction.")
         return None, None, None, [], [], None
 
-    if total_input_satoshis < calculated_fee:
-        logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_satoshis}, required for fee: {calculated_fee}.")
+    if total_input_sats < calculated_fee:
+        logger.error(f"Insufficient funds for transaction. Total inputs: {total_input_sats}, required for fee: {calculated_fee}.")
         return None, None, None, [], [], None
     
     tx.sign()
 
-   
-    '''
-    moved code to create_op_return_feekram.py for history
-    '''
+    ## 5. Handle Result
+    
+    raw_tx_hex = tx.hex()
+    txid = tx.txid()
 
+    logger.info(f"New Transaction ID: {txid}")
+    logger.info(f"New Transaction Raw Hex: {raw_tx_hex}")
 
-    logger.info(f"New Transaction ID: {tx.txid()}")
-    logger.info(f"New Transaction Raw Hex: {tx.hex()}")
-
-
-
+    # region DRY RUN happy path (return)
     if dry_run:
-        # Finde den Change-Output, indem du nach dem Skript suchst, das zur Empfängeradresse passt
+        # Find Change-Output: look for Script matching receiver address
         expected_change_script_hex = P2PKH().lock(recipient_address).hex()
         change_output = next((o for o in tx.outputs if o.locking_script.hex() == expected_change_script_hex), None)
         change_sats = change_output.satoshis if change_output else 0
         
         logger.info("\n--- DRY RUN ---")
         logger.info(f"Final Calculated Fee: {calculated_fee} satoshis")
-        logger.info(f"Input Satoshis: {total_input_satoshis}")
+        logger.info(f"Input Satoshis: {total_input_sats}")
         logger.info(f"Change Output: {change_sats} satoshis")
         
         # Prüfen auf Dust-Limit
@@ -977,11 +920,12 @@ async def create_op_return_transaction(
              
         logger.info("Transaction will NOT be broadcast. Exiting now.")
         
-        # Beenden, bevor gesendet wird. broadcast_txid ist None, damit keine Logs geschrieben werden.
-        return tx.hex(), None, None, consumed_utxos_details, [], calculated_fee
-
+        # Stop befire broadcast ,  broadcast_txid ist None to avoid writing logs.
+        return tx.hex(), None, None, consumed_details, [], calculated_fee
+    #endregion
 
     logger.info(f"Adding raw transaction {tx.txid()} to tx_store (UTXO cache)...")
+
     tx_store["transactions"].append({
             "txid": tx.txid(),
             "rawtx": tx.hex(), 
@@ -991,20 +935,22 @@ async def create_op_return_transaction(
             #"blockheight": None,         # Initialize blockheight as null
             #"merkle_proof": None         # Initialize merkle_proof as null
         })
-    # TODO entfernen: wallet_manager.save_tx_store(f_tx_store, tx_store)
-
-
+    
+    broadcast_txid = None
+    broadcast_ts = None
 
     if no_broadcast:
-        # --- NEW --- Simulate a successful broadcast locally
-        logger.info("\n--- NO BROADCAST MODE ---")
+        # --- Simulate a successful broadcast locally
+        logger.info("\n--- NO-BROADCAST MODE ---")
         logger.info("Simulating successful broadcast. Local stores will be updated.")
         broadcast_txid = tx.txid()
         broadcast_timestamp = datetime.now(timezone.utc).isoformat()
     else:
-        # Original broadcast logic
+        # Normal broadcast logic
         broadcast_txid = await blockchain_api.broadcast_transaction(tx.hex())
         broadcast_timestamp = datetime.now(timezone.utc).isoformat() if broadcast_txid else None
+
+
 
     # --- Important: Move UTXO marking logic to the calling function (log_intermediate_result_process) ---
     # The actual marking of UTXOs as used, and storing new UTXOs created by this transaction,
@@ -1014,22 +960,21 @@ async def create_op_return_transaction(
 
     # Identify and collect details of NEW UTXOs created by this transaction for the caller
     new_utxos_details = []
-    for vout_idx, output in enumerate(tx.outputs):
-        if output.satoshis > 0:
-            new_utxos_details.append({
-                "txid": tx.txid(),
-                "vout": vout_idx, 
-                "satoshis": output.satoshis,
-                "scriptPubKey": output.locking_script.hex(), 
-                "height": -1, # Height unknown until mined
-                "used": False,
-                "timestamp": datetime.now(timezone.utc).isoformat() 
-            })
-    
-    logger.info(f"--- End of create_op_return_transaction ---")
-    
     if broadcast_txid:
-        return tx.hex(), broadcast_timestamp, broadcast_txid, consumed_utxos_details, new_utxos_details, calculated_fee
+        for vout_idx, output in enumerate(tx.outputs):
+            if output.satoshis > 0:
+                new_utxos_details.append({
+                    "txid": tx.txid(),
+                    "vout": vout_idx, 
+                    "satoshis": output.satoshis,
+                    "scriptPubKey": output.locking_script.hex(), 
+                    "height": -1, # Height unknown until mined
+                    "used": False,
+                    "timestamp": datetime.now(timezone.utc).isoformat() 
+                })
+    
+        logger.info(f"--- End of create_op_return_transaction ---")
+        return tx.hex(), broadcast_timestamp, broadcast_txid, consumed_details, new_utxos_details, calculated_fee
     else:
         return None, None, None, [], [], None # Return empty lists for UTXO changes on failure
 
@@ -1119,9 +1064,6 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                 logger.info(f"  Initial run: Processing {len(records_to_monitor)} backlog records...")
             else:
                 logger.info(f"  Monitoring {len(records_to_monitor)} audit records...")
-
-
-
 
             for record in records_to_monitor:
                 # check for stop. When many tx to monitor, it would be blocked otherwise
@@ -1917,17 +1859,73 @@ async def verify_single_record(
     return True
 
 
+async def _resolve_and_hash_file(
+    original_path: str,
+    data_search_path: Optional[str],
+    alt_file_reference: Optional[str]
+) -> Optional[bytes]:
+    """
+    Resolves the final file path based on a 3-tier priority system and hashes the file.
+    Returns the SHA-256 hash (bytes) if successful, None otherwise.
+    """
+    logger.debug(f"Starting file resolution for original path: {original_path}")
+    final_path = None
+    
+    # 1. Priority 1: Check Original Path (The fastest check)
+    if os.path.exists(original_path):
+        final_path = original_path
+        logger.debug(f"File resolution: Found at original path: {final_path}")
+    
+    # 2. Priority 2: Check Alternative File Reference (Applies to both full path and filename in search path)
+    if final_path is None and alt_file_reference:
+        
+        # 2a. Check if alt_file_reference is a direct path that exists
+        if os.path.exists(alt_file_reference):
+            final_path = alt_file_reference
+            logger.warning(f"File resolution: Using full alternative path: {final_path}")
+            
+        # 2b. Check if alt_file_reference (as filename) exists in the search path
+        elif data_search_path:
+            alt_filename = os.path.basename(alt_file_reference)
+            candidate_path = os.path.join(data_search_path, alt_filename)
+            
+            if os.path.exists(candidate_path):
+                final_path = candidate_path
+                logger.warning(f"File resolution: Using search path with alternative filename: {final_path}")
+
+    # 3. Priority 3: Check Search Path + Original Filename (Fallback)
+    if final_path is None and data_search_path:
+        original_filename = os.path.basename(original_path)
+        candidate_path = os.path.join(data_search_path, original_filename)
+        
+        if os.path.exists(candidate_path):
+            final_path = candidate_path
+            logger.warning(f"File resolution: Using search path with original filename fallback: {final_path}")
+
+    # 4. Hash the found file
+    if final_path is None:
+        logger.error(f"File resolution FAILED: Cannot find file for original reference '{original_path}'.")
+        return None
+        
+    logger.info(f"File resolution SUCCESS: Hashing file at: {final_path}")
+    
+    # Call the asynchronous file hasher (utils.py)
+    return await utils.hash_file_async(final_path)
+
 
 async def verify_single_record_extended(
     record: dict, 
     checks_to_perform: dict, 
-    header_manager: BlockHeaderManager
-) -> bool:
+    header_manager: BlockHeaderManager,
+    data_search_path: Optional[str] = None,
+    alt_file_reference: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Performs a series of verifications on a single, already loaded audit record.
 
     This function is stateless (performs no file I/O to get the record) and
     is controlled by the 'checks_to_perform' dictionary.
+     Returns the full verification summary dictionary instead of a boolean.
 
     Args:
         record (dict): The complete audit record dictionary to verify.
@@ -1936,60 +1934,106 @@ async def verify_single_record_extended(
         header_manager (BlockHeaderManager): An initialized BlockHeaderManager
                                              instance for SPV checking.
 
+        data_search_path (str): Path to search the file for if not found from audit record
+        alt_file_reference (str): Alt file name to apply audit to in case of mismatch
+
     Returns:
         bool: True if all requested checks passed, False otherwise.
     """
-    
-    # --- 1. Setup and Prerequisite Check ---
+ 
+    # region --- 0. Setup and Prerequisite Check ---
     log_id = record.get("log_id", "UNKNOWN")
+    result = {
+        "log_id": log_id,
+        "verification_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "overall_status": "success", # Assume success unless a check fails
+        "checks_performed": [],
+        "failures": []
+    }
+    
+    
     logger.info(f"\n--- V2 Verification Started for Record: {log_id} ---")
 
     blockchain_rec = record.get("blockchain_record", {})
+    payload_ok = True
 
     if blockchain_rec.get("status") != "confirmed":
         logger.warning(f"  Record {log_id}: Skipped verification. Status is not 'confirmed' (Status: {blockchain_rec.get('status')}).")
-        return False
+        result["overall_status"] = "SKIPPED"
+        return result
 
     original_content = record.get("original_audit_content")
-    txid = blockchain_rec.get("txid")
+    txid = blockchain_rec.get("txid") 
     raw_transaction_hex = blockchain_rec.get("raw_transaction_hex")
 
-    if not all([original_content, txid, raw_transaction_hex]):
-        logger.error(f"  Record {log_id}: FAIL. Missing essential data (content, txid, or raw_tx) for verification.")
-        return False
 
+    if not all([original_content, txid, raw_transaction_hex]):
+        # actually txid and raw_transaction_hex could be recomputed
+        logger.error(f"  Record {log_id}: FAIL. Missing essential data (content, txid, or raw_tx) for verification.")
+        result["overall_status"] = "failed"
+        result["failures"].append("Missing essential record data (content, txid, or raw_tx).")
+        return result
+    #endregion
+
+    # region --- 1. Compute actual hash
     # for efficiency
     storage_mode = record.get("data_storage_mode", "embedded")
    
     assert original_content is not None
-    
+    computed_original_hash: Optional[bytes] = None
+
     if storage_mode == "embedded":
         computed_original_hash = sha256(original_content.encode('utf-8'))
-    else:
-        computed_original_hash = await utils.hash_file_async(original_content)
+    elif storage_mode == "by_reference":
+        computed_original_hash = await _resolve_and_hash_file(
+            original_path=original_content,
+            data_search_path=data_search_path,
+            alt_file_reference=alt_file_reference
+        )
+    
+    if computed_original_hash is None:
+        logger.error(f"  Record {log_id}: FAIL. Could not compute original hash for mode '{storage_mode}'.")
+        result["overall_status"] = "failed"
+        result["failures"].append(f"Hash calculation failed for mode '{storage_mode}'.")
+        return result
     
     assert computed_original_hash is not None
+    #endregion
 
-    # --- 2. Check TX Consistency ---
+    # region --- 2. Check TX Consistency ---
     if checks_to_perform.get("check_tx_consistency"):
+        result["checks_performed"].append("check_tx_consistency")
         logger.info(f"  Verifying Step: Local Transaction Consistency...")
         try:
             tx_obj_from_raw = Transaction.from_hex(raw_transaction_hex)
+
+            #region TO CHECK!
             if tx_obj_from_raw is None:
                 logger.error("  FAIL: Failed to deserialize raw_transaction_hex.")
-                return False
+                result["failures"].append("Could not create tx obj from raw")
+                return result
+                
+            #endregion
 
             computed_txid_from_raw = tx_obj_from_raw.txid()
-            if computed_txid_from_raw != txid:
-                logger.error(f"  FAIL: Computed TXID '{computed_txid_from_raw}' does NOT match stored TXID '{txid}'.")
-                return False
-            logger.info(f"  PASS: TX consistency check.")
-        except Exception as e:
-            logger.error(f"  FAIL: Error during TX consistency check: {e}", exc_info=True)
-            return False
 
-    # --- 3. Check Local Hash Consistency (EC) ---
+            if computed_txid_from_raw != txid:
+                logger.error(f"  FAIL: Computed TXID '{computed_txid_from_raw}' does NOT match stored TXID '{txid}'.")
+                payload_ok = False
+                result["failures"].append("TXID mismatch (Local integrity error).")
+            else:
+                logger.info(f"  PASS: TX consistency check.")
+        except Exception as e:
+            logger.error(f"  FAIL: Error during TX consistency check: {e}", exc_info=True)
+            payload_ok = False
+            result["failures"].append(f"TX consistency check failed: {e}")
+    #endregion 
+
+    # region --- 3. Check Local Hash Consistency (EC) ---
+    # Only local consistency check. Check against raw tx is in payload check
+    # TODO Later maybe change?
     if checks_to_perform.get("check_ec_hash"):
+        result["checks_performed"].append("check_ec_hash")
         logger.info(f"  Verifying Step: Local Hash Consistency (EC)...")
         
         ec_hash_pushed_hex = blockchain_rec.get("data_hash_pushed_to_op_return")
@@ -1999,11 +2043,17 @@ async def verify_single_record_extended(
         else:
             if computed_original_hash != bytes.fromhex(ec_hash_pushed_hex):
                 logger.error(f"  FAIL: EC Hash Mismatch.")
-                return False
-            logger.info(f"  PASS: Local EC hash consistency check.")
+                payload_ok = False
+                result["failures"].append("EC Hash Mismatch (Local file integrity broken).")
+            else:
+                logger.info(f"  PASS: Local EC hash consistency check.")
+    #endregion
 
-    # --- 4. Check Local Hash Consistency (X.509) ---
+    # region --- 4. Check Local Hash Consistency (X.509) ---
+    # ONLY Local integrity check
+    # TODO later maybe query raw tx?
     if checks_to_perform.get("check_x509_hash"):
+        result["checks_performed"].append("check_x509_hash")
         logger.info(f"  Verifying Step: Local Hash Consistency (X.509)...")
         
         x509_hash_pushed_hex = blockchain_rec.get("x509_hash_pushed")
@@ -2013,11 +2063,14 @@ async def verify_single_record_extended(
             
         else:
             if computed_original_hash != bytes.fromhex(x509_hash_pushed_hex):
-                logger.error(f"  FAIL: X.509 Hash Mismatch.")
-                return False
-            logger.info(f"  PASS: Local X.509 hash consistency check.")
+                logger.error(f"  FAIL: X.509 Hash Mismatch (Local file vs. Raw TX).")
+                payload_ok = False
+                result["failures"].append("X.509 Hash Mismatch (Local file integrity broken).")
+            else:
+                logger.info(f"  PASS: Local X.509 hash consistency check.")
+    #endregion
 
-    # --- 5. Check Payload Integrity (Signatures) ---
+    # region --- 5. Check Payload Integrity (Signatures) ---
     # We combine these checks as they both require parsing the raw transaction
     run_payload_check = checks_to_perform.get("check_ec_signature") or \
                         checks_to_perform.get("check_x509_signature")
@@ -2026,45 +2079,61 @@ async def verify_single_record_extended(
         all_data_pushes = extract_op_return_payload(raw_transaction_hex)
         if not all_data_pushes:
             logger.error("  FAIL: No OP_RETURN data found in the transaction.")
-            return False
-        
-        assert computed_original_hash is not None, "Original content cannot be None for signature verification."
-        payload_ok, _ = _verify_payload_loop_v3(
-                            all_data_pushes, 
-                            computed_original_hash, 
-                            checks_to_perform)
-        if not payload_ok:
-            # The _verify_payload_loop_v2 function will log the specific failure
-            logger.error(f"  FAIL: Payload integrity check (signatures) failed.")
-            return False
+            payload_ok = False
+            result["failures"].append("No OP_RETURN data found.")
+        else:
+            payload_ok_check, _ = _verify_payload_loop_v3(
+                                all_data_pushes, 
+                                computed_original_hash, 
+                                checks_to_perform)
+            if not payload_ok_check:
+                logger.error(f"  FAIL: Payload integrity check (signatures) failed.")
+                payload_ok = False
+                result["failures"].append("Signature verification failed.")
         # PASS message is logged inside the helper
+    #endregion
 
-    # --- 6. Check SPV (Blockchain Inclusion) ---
+    # region --- 6. Check SPV (Blockchain Inclusion) ---
     if checks_to_perform.get("check_spv_proof"):
         # We pass 'header_manager' instead of creating a new one
+        result["checks_performed"].append("check_spv_proof")
         spv_ok = await _verify_spv_proof_v2(blockchain_rec, txid, header_manager, log_id)
+
         if not spv_ok:
             # The _verify_spv_proof_v2 function will log the specific failure
-            logger.error(f"  FAIL: SPV proof check failed.")
-            return False
+            logger.error(f"  FAIL: SPV proof check failed.")
+            payload_ok = False
+            result["failures"].append("SPV proof validation failed.")
+
         # PASS message is logged inside the helper
+    #endregion
 
-    logger.info(f"--- V2 VERIFICATION for {log_id} COMPLETE: ALL REQUESTED CHECKS PASSED ---")
-    return True
+    if payload_ok:
+        logger.info("--- OVERALL: PASSED ---")
+        result["overall_status"] = "success"
+    else:
+        logger.error("--- OVERALL: FAILED ---")
+        result["overall_status"] = "failed"
+        
+    return result
 
 
-# --- END: V2 Audit Functions Step 1.1 ---
+
+# --- END: V0.1.2 Audit Functions Step 1.1 ---
 
 
-# --- Main V2 "Manager" Function (Step 1.2) ---
+# --- Main V0.1.3 "Manager" Function (Step 1.2) ---
 
 async def audit_records_runner(
     all_audit_data: List[Dict], 
     checks_to_perform: dict, 
-    record_id: Optional[str] = None
+    record_id: Optional[str] = None,
+    #TODO force_audit: bool = False,
+    data_search_path: Optional[str] = None,
+    alt_file_reference: Optional[str] = None
 ) -> bool:
     """
-    Manages the V2 verification process.
+    Manages the V0.1.3 verification process.
     
     This function loads necessary resources (like the block header cache) once,
     filters the records based on user input, and dispatches them to the
@@ -2079,7 +2148,7 @@ async def audit_records_runner(
     Returns:
         bool: True if all verified records passed, False if any failed.
     """
-    logger.info("--- V2 Audit Runner Started ---")
+    logger.info("--- V0.1.3 Audit Runner Started ---")
     
     valid_keys = {
        "check_ec_hash", "check_ec_signature",
@@ -2125,7 +2194,7 @@ async def audit_records_runner(
 
     #endregion
     
-    # --- 3. Filter for 'confirmed' records only ---
+    # region --- 3. Filter for 'confirmed' records only ---
     # The worker function (verify_single_record) also checks this,
     # but filtering here provides a correct count for the summary.
     confirmed_records = [
@@ -2148,12 +2217,14 @@ async def audit_records_runner(
         logger.info(f"Skipped (not confirmed): {skipped_not_confirmed}")
         # No failures occurred, so return True
         return True  # intentional: no failures occurred. May want to indicate unchecked records
-
+    #endregion
+    
     # --- 4. Iterate and verify ---
     total_to_check = len(confirmed_records)
     passed_count = 0
     failed_count = 0
-    
+    skipped_previous_success_count = 0
+
     logger.info(f"Found {total_to_check} 'confirmed' record(s) to verify...")
     
     for i, record in enumerate(confirmed_records):
@@ -2162,38 +2233,41 @@ async def audit_records_runner(
         
         try:
             # Call the 'worker' function, passing in the shared header manager
-            if Config.AUDIT_INCLUDING_FILES:
-                is_valid = await verify_single_record_extended(record, checks_to_perform, header_manager)
-            else:
-                is_valid = await verify_single_record(record, checks_to_perform, header_manager)
+            verification_payload = await verify_single_record_extended(
+                    record, 
+                    checks_to_perform, header_manager,
+                    data_search_path, alt_file_reference)
             
-            if is_valid:
+            record["verification_summary"] = verification_payload
+
+            if verification_payload.get('overall_status') == 'success':
                 passed_count += 1
+            elif verification_payload.get('overall_status') == 'SKIPPED_PREVIOUS_SUCCESS':
+                skipped_previous_success_count += 1
             else:
                 failed_count += 1
+
         except Exception as e:
             logger.error(f"--- UNEXPECTED ERROR during verification of {log_id}: {e} ---", exc_info=True)
             failed_count += 1
 
     # --- 5. Print summary ---
-    logger.info(f"\n--- V2 AUDIT RUNNER SUMMARY ---")
+    logger.info(f"\n--- V0.1.3 AUDIT RUNNER SUMMARY ---")
     logger.info(f"Total Records Requested: {len(records_to_verify)}")
     logger.info(f"Skipped (not confirmed): {skipped_not_confirmed}")
     logger.info(f"Total Confirmed Records Checked: {total_to_check}")
     logger.info(f"Passed: {passed_count}")
     logger.info(f"Failed: {failed_count}")
 
-    
+    if skipped_previous_success_count > 0:
+        logger.info(f"Skipped (already success): {skipped_previous_success_count}")
+        
     overall_status = (failed_count == 0)
     logger.info(f"Overall Result: {'PASS' if overall_status else 'FAIL'}")
      
     return overall_status
 
 # --- END: V2 Audit Functions (Step 1.2) ---
-
-
-
-
 
 
 async def audit_record_verifier(log_id: str) -> bool:
@@ -2532,3 +2606,4 @@ async def audit_all_records():
     logger.info(f"Failed Audits: {failed_audits}")
     overall_result = 'PASS' if failed_audits == 0 else 'FAIL'
     logger.info(f"Overall Batch Audit Result: { overall_result }")
+
