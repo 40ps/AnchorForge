@@ -1,6 +1,6 @@
-# AF_py/main_audit_v2.py
+# AF_py/main_audit.py
 """
-V3 Audit Runner - The flexible and efficient audit tool.
+V0.1.3 Audit Runner - The flexible and efficient audit tool.
 
 This script loads the audit log file once and uses the V2/3 "manager" 
 and "worker" functions in audit_core.py to perform granular, 
@@ -9,17 +9,17 @@ user-specified checks.
 This separation of concerns makes it much faster than the v1 auditor
 and suitable for use with different data sources (e.g., databases).
 
-With functions in audit with v3 it now supports local files
+With functions in audit it now supports local files
 
 Example usage:
 # Run all checks on all confirmed records in the test log
-python AF_py/main_audit_v3.py --log-file audit_log_test.json --network test
+python main_audit.py --log-file audit_log_test.json --network test
 
 # Run only hash consistency checks on all "iss-location-001" records
-python AF_py/main_audit_v3.py --log-file audit_log_test.json --network test --keyword "iss-location-001" --check-ec-hash
+python main_audit.py --log-file audit_log_test.json --network test --keyword "iss-location-001" --check-ec-hash
 
 # Run only signature checks for a single record
-python AF_py/main_audit_v3.py --log-file audit_log_test.json --network test --id <log-id> --check-ec-signature
+python main_audit.py --log-file audit_log_test.json --network test --id <log-id> --check-ec-signature
 """
 
 import asyncio
@@ -34,10 +34,11 @@ from typing import List, Dict
 
 # Import necessary components from your project
 from config import Config
-import audit_core
+import af_core_defs
+import af_verifier
 # from block_manager import BlockHeaderManager
 
-VIBECODEVERSION=0.5
+VIBECODEVERSION=0.6
 
 # Configure logging for this script
 logging.basicConfig(
@@ -65,7 +66,7 @@ def load_audit_data(log_file_path: str) -> List[Dict]:
         # Use an exclusive lock (LOCK_EX) to prevent collision with monitor/batch processes
         # Using "r" mode for read-only, but still locking exclusively
         with portalocker.Lock(log_file_path, "r", flags=LOCK_EX, timeout=5) as f:
-            data = audit_core.load_audit_log(f) # Re-use your existing loader
+            data = af_core_defs.load_audit_log(f) # Re-use your existing loader
             if data is None: # load_audit_log returns [] on error, but good to check
                  return []
             logger.info(f"Successfully loaded {len(data)} records.")
@@ -93,7 +94,7 @@ def save_audit_results(output_file_path: str, data: List[Dict]):
         logger.error(f"An unexpected error occurred saving the results: {e}", exc_info=True)
 
 
-async def main_audit_v3():
+async def main_audit():
     """
     Main asynchronous function to parse arguments and run the audit.
     """
@@ -102,12 +103,30 @@ async def main_audit_v3():
         formatter_class=argparse.RawTextHelpFormatter
     )
     
+
     # --- Data Source Arguments (Your Request) ---
     parser.add_argument(
         '--log-file',
         required=True,
         help="Path to the audit log file to verify (e.g., audit_log_test.json)."
     )
+
+    # --- Data Path Arguments ---
+    data_path_flags = parser.add_argument_group('Data Resolution Flags')
+    data_path_flags.add_argument(
+        '--data-dir',
+        type=str,
+        default=None,
+        help="Optional base directory to search for 'by_reference' files if the original path is missing."
+    )
+
+    data_path_flags.add_argument(
+        '--alt-file',
+        type=str,
+        default=None,
+        help="Specify an alternative filename or full path to use instead of the original file path stored in the log."
+    )
+
 
     parser.add_argument(
         '-o', '--output-file',
@@ -229,11 +248,13 @@ async def main_audit_v3():
 
     # --- 5. Call the V2 Runner Function ---
     try:
-        overall_success = await audit_core.audit_records_runner(
+        overall_success = await af_verifier.audit_records_runner(
             all_audit_data=data_to_run, # Pass the (potentially filtered) data
             checks_to_perform=checks_to_perform,
-            record_id=args.id  # Pass the ID, runner will prioritize this
+            record_id=args.id,  # Pass the ID, runner will prioritize this
             #TODO force_audit
+            data_search_path = args.data_dir,
+            alt_file_reference = args.alt_file
         )
         # Entweder in die --output-file, falls angegeben,
         # oder zurück in die --log-file (in-place update).
@@ -256,13 +277,13 @@ async def main_audit_v3():
             logger.info(f"Restored ACTIVE_NETWORK_NAME to '{original_network_config}'.")
 
     if not overall_success:
-        logger.error("--- V2 AUDIT RUN FAILED ---")
+        logger.error("--- V0.1.3 AUDIT RUN FAILED ---")
         sys.exit(1) # Exit with an error code if any check failed
     else:
-        logger.info("--- V2 AUDIT RUN PASSED ---")
+        logger.info("--- V0.1.3 AUDIT RUN PASSED ---")
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main_audit_v3())
+        asyncio.run(main_audit())
     except KeyboardInterrupt:
-        logger.info("\n--- V2 Audit interrupted by user. ---")
+        logger.info("\n--- V0.1.3 Audit interrupted by user. ---")
