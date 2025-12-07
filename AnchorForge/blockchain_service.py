@@ -1,4 +1,6 @@
 # blockchain_service.py
+# Optimized to store only essential block header data (excluding TX lists).
+
 import logging
 import asyncio
 from typing import Dict, Any, Optional
@@ -9,6 +11,27 @@ from blockchain_api import get_chain_info_woc, get_block_header_height, get_bloc
 from utils import verify_block_hash 
 
 logger = logging.getLogger(__name__)
+
+def _minimize_header_data(full_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extracts only the essential fields needed for SPV verification and
+    block linking. Discards the potentially huge list of transaction IDs ('tx').
+    """
+    return {
+        "hash": full_data.get("hash"),
+        "height": full_data.get("height"),
+        "version": full_data.get("version"),
+        "merkleroot": full_data.get("merkleroot"),
+        "time": full_data.get("time"),
+        "nonce": full_data.get("nonce"),
+        "bits": full_data.get("bits"),
+        "previousblockhash": full_data.get("previousblockhash"),
+        # Optional metadata that doesn't take much space but is useful
+        "difficulty": full_data.get("difficulty"),
+        "confirmations": full_data.get("confirmations"),
+        "nextblockhash": full_data.get("nextblockhash")
+        # EXPLICITLY REMOVED: "tx" (List of transaction IDs)
+    }
 
 async def sync_block_headers(header_manager: BlockHeaderManager, start_height: int = 0, end_height: Optional[int] = None):
     """
@@ -22,7 +45,6 @@ async def sync_block_headers(header_manager: BlockHeaderManager, start_height: i
     """
     logger.info(f"\n--- Starting Block Header Synchronization ---")
     
-    # local_headers wird jetzt über den header_manager verwaltet
     local_headers = header_manager.headers 
     
     current_latest_height_on_chain = 0
@@ -58,17 +80,21 @@ async def sync_block_headers(header_manager: BlockHeaderManager, start_height: i
                 logger.warning(f"  Could not get block hash for height {height}. Response: {block_info_by_height}. Skipping.")
                 continue
             
-            
             block_hash = block_info_by_height["hash"]
 
             if block_hash in local_headers:
+                if height % 1000 == 0: logger.info(f"Height {height} already cached.")
                 continue
 
             full_header_data = await get_block_header(block_hash)
             
             if full_header_data:
-                if verify_block_hash(full_header_data):
-                    local_headers[block_hash] = full_header_data
+
+                # 4. Filter Data (remove verbosity)
+                minimal_header = _minimize_header_data(full_header_data)
+
+                if verify_block_hash(minimal_header):
+                    local_headers[block_hash] = minimal_header
                     synced_count += 1
                     if synced_count % 100 == 0:
                         logger.info(f"  Synced {synced_count} headers. Current height: {height}")
