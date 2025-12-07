@@ -1,4 +1,8 @@
 '''
+DEPRECATED:
+  kept for historic reasons
+
+
 Version: 25-08-10
     moved load/save blockheader into an own class BlockHeaderManager
     created blockchain_service
@@ -72,9 +76,8 @@ from block_manager import BlockHeaderManager
 from blockchain_service import sync_block_headers
 
 import wallet_manager
-import audit_core
-import main_audit_log_event
-
+import af_manager 
+import af_anchor
 import utils
 
 
@@ -162,12 +165,13 @@ async def mainmain():
 
     # Start the monitoring task in the background
     monitor_task = asyncio.create_task(
-        audit_core.monitor_pending_transactions(utxo_file_path, used_utxo_file_path, polling_interval_seconds=Config.MONITOR_POLLING_INTERVAL))
+        af_manager.monitor_pending_transactions(utxo_file_path, used_utxo_file_path, polling_interval_seconds=Config.MONITOR_POLLING_INTERVAL))
     logging.info("Monitor task has been scheduled to run in the background.") 
     
     # Simulate logging an intermediate result
     logging.info("\n--- Initiating Intermediate Result Logging Process ---")
-    await main_audit_log_event.log_intermediate_result_process()
+    await af_manager.log_audit_event()
+            #intermediate_result_process()
             #utxo_file_path, used_utxo_file_path, tx_file_path)
 
     # Example of logging multiple audit records (optional)
