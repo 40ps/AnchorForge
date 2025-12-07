@@ -43,7 +43,6 @@ class Config:
     
 
     # --- Secrets (loaded from .env) ---
-    # It's good practice to handle mandatory keys explicitly.
     PRIVATE_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}PRIVATE_KEY_WIF")
 
     UTXO_STORE_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}UTXO_STORE_KEY_WIF")
@@ -55,8 +54,11 @@ class Config:
     
 
     KEYPAIR_STORE_FILE: Optional[str] = os.getenv("KEYPAIR_STORE_FILE")
-    
+
     X509_KEYPAIR_STORE_FILE : Optional[str] = os.getenv("X509_KEYPAIR_STORE_FILE", "../local_config/local_x509_keys.json")
+    ANCHOR_CERT_LABEL = "anchor_example_certificate"
+    # x509_label = 'anchor_example_certificate' # <--- Hier hardcoded
+    # cert_info = key_x509_manager.get_x509_key_pair_by_label(x509_label)
 
     assert PRIVATE_KEY_WIF is not None, "PRIVATE_KEY_WIF must be set in environment variable"
     assert UTXO_STORE_KEY_WIF is not None, "UTXO_STORE_KEY_WIF must be set in environment variable"
@@ -64,13 +66,12 @@ class Config:
     assert PRIVATE_SIGNING_KEY_WIF is not None, "PRIVATE_SIGNING_KEY_WIF must be set in environment variable"
 
     assert KEYPAIR_STORE_FILE is not None, "KEYPAIR_STORE_FILE must be set in environment variable"
+    assert ANCHOR_CERT_LABEL is not None, "ANCHOR_CERT_LABEL must be set in env variable"
 
     # The bank address is not a secret, but it's good to keep it with the bank key.
     assert BANK_ADDRESS is not None, "BANK_ADDRESS must be set in environment variable"
     
 
-    
-    # --- File Paths ---
     # --- File Paths ---
     # File paths are now dynamically named based on the active network
     UTXO_STORE_FILE = f"utxo_store_{ACTIVE_NETWORK_NAME}.json"
@@ -92,7 +93,7 @@ class Config:
     # 
     TSC_PROOF_FIELD = "merkle_proof_tsc_data"
     TSC_TIMESTAMP_FIELD = "tsc_proof_added_utc"
-    LEGACY_PROOF_FIELD = "merkle_proof_data" # Behalten wir den alten Namen für Klarheit
+    LEGACY_PROOF_FIELD = "merkle_proof_data" # keep old name for clarity
     LEGACY_SIZE_FIELD = "merkle_proof_size_bytes"
     TSC_SIZE_FIELD = "merkle_proof_tsc_size_bytes"
     LEGACY_PROOF = False

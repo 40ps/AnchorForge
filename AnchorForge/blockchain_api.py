@@ -13,7 +13,7 @@ from collections import deque
 import json
 import asyncio
 
-# --- MODIFIED: Import aiohttp instead of httpx ---
+# --- Import aiohttp instead of httpx to solve local problems ---
 import aiohttp
 
 from config import Config
@@ -45,7 +45,7 @@ def _record_api_call_and_get_rate():
     return rate_per_minute
 
 
-# --- helper function for consistent error logging with aiohttp ---
+# --- consistent error logging with aiohttp ---
 async def _log_aiohttp_error_bu251109(response: aiohttp.ClientResponse, context: str):
     """Logs detailed error information from an aiohttp response."""
     try:
@@ -55,7 +55,7 @@ async def _log_aiohttp_error_bu251109(response: aiohttp.ClientResponse, context:
         error_message = await response.text()
     logger.error(f"Request failed for {context}: Status {response.status}, Error: {error_message}")
 
-# --- helper function for consistent error logging with aiohttp ---
+# --- consistent error logging with aiohttp ---
 async def _log_aiohttp_error(response: aiohttp.ClientResponse, context: str):
     """Logs detailed error information from an aiohttp response."""
     try:
@@ -117,23 +117,21 @@ async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     
     logging.info(f"--- Broadcasting Transaction to {url} ---")
-    print("--- Point 1 ---")
+    
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, json=payload, headers=headers) as response:
-                print("--- Point 2 ---")
+                
                 if Config.VERBOSE:
                     logging.info(f"HTTP Status Code: {response.status}")
                 
                 if response.status == 200:
                     txid_raw = await response.text()
+
                     # The response is sometimes quoted, remove quotes if they exist
-                   # --- MODIFIKATION: Umfassendere Bereinigung ---
-                    # 1. Entfernt alle führenden/folgenden Leerzeichen UND Zeilenumbrüche (\n, \r etc.)
+                    # 1. leading/subsequent Space AND line breaks (\n, \r etc.)
                     txid_stripped = txid_raw.strip() 
-                    # 2. Entfernt eventuell verbleibende führende/folgende Anführungszeichen
                     txid = txid_stripped.strip('"') 
-                    # --- ENDE MODIFIKATION ---
                     logging.info(f"Success: Transaction broadcasted with txid: {txid}")
                     return txid
                 else:
@@ -150,12 +148,9 @@ async def broadcast_transaction(signed_raw_tx_string: str) -> str | None:
         logging.error(f"An unexpected error occurred during broadcast: {e}")
         return None
 
-# --- MODIFIED: fetch_raw_transaction_hex rewritten for aiohttp ---
 async def fetch_raw_transaction_hex(txid: str) -> Optional[str]:
     """Fetches the raw transaction hex for a given txid from WhatsOnChain."""
     _record_api_call_and_get_rate()
-    #network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
-    # url = f"{network_url}/tx/{txid}/hex"
     url = f"{Config.WOC_API_BASE_URL}/tx/{txid}/hex"
 
     logger.info(f"API Request URL (fetch_raw_transaction): {url}")
@@ -179,14 +174,12 @@ async def fetch_raw_transaction_hex(txid: str) -> Optional[str]:
         logger.error(f"An unexpected error occurred fetching raw tx for {txid}: {e}")
         return None
 
-# --- get_transaction_status_woc rewritten for aiohttp ---
 async def get_transaction_status_woc(txid: str) -> Optional[Dict[str, Any]]:
     """Get the status of a transaction by its ID from WhatsOnChain."""
     _record_api_call_and_get_rate()
     
     url = f"{Config.WOC_API_BASE_URL}/tx/{txid}"
 
-    # DEBUG
     logger.info(f"Monitor: Attempting to get status for txid {txid} from URL: {url}")
 
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
@@ -195,12 +188,10 @@ async def get_transaction_status_woc(txid: str) -> Optional[Dict[str, Any]]:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
                 if response.status == 200:
-                    # DEBUG
                     logger.info(f"Monitor: Successfully received status 200 for txid {txid}.")
                     return await response.json()
                 else:
-                    # --- DEBUG: Detaillierteres Logging im Fehlerfall ---
-                    response_text = await response.text() # Antworttext immer lesen
+                    response_text = await response.text() 
                     logger.warning(f"Monitor: Received status {response.status} for txid {txid} from {url}. Response: {response_text}")
 
 
@@ -251,10 +242,10 @@ async def get_block_header(block_hash: str) -> Optional[Dict[str, Any]]:
             async with session.get(url) as response:
                 if response.status == 200:
                     data = await response.json()
-                    if isinstance(data, dict) and "hash" in data:  # Oder passende Keys
+                    if isinstance(data, dict) and "hash" in data:
                         return data
                     elif isinstance(data, list) and len(data) > 0 and "hash" in data[0]:
-                        return data[0]  # Fallback für Kompatibilität
+                        return data[0]  # Fallback for compatibility
                     else:
                         logger.warning(f"Unexpected response format for hash {url}: {data}")
                         return None
@@ -282,10 +273,10 @@ async def get_block_header_height(height: int) -> Optional[Dict[str, Any]]:
                     data = await response.json()
                     logger.debug(f"Raw API Response: {data}")
 
-                    if isinstance(data, dict) and "height" in data:  # Oder passende Keys
+                    if isinstance(data, dict) and "height" in data: 
                         return data
                     elif isinstance(data, list) and len(data) > 0 and "height" in data[0]:
-                        return data[0]  # Fallback für Kompatibilität
+                        return data[0]  # fallback for compatibility
                     else:
                         logger.warning(f"Unexpected response format for {url}: {data}")
                         return None
@@ -318,8 +309,8 @@ async def get_tsc_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
 
 async def get_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
     """Get the Merkle path for a transaction by its ID from WhatsOnChain."""
+
     _record_api_call_and_get_rate()
-    # obsolete network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
     url = f"{Config.WOC_API_BASE_URL}/tx/{txid}/proof"
     
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
@@ -337,8 +328,9 @@ async def get_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
 
 async def fetch_utxos_for_address(address: str) -> List[Dict[str, Any]]:
     """Fetch all unspent transaction outputs (UTXOs) for a given address."""
+
     _record_api_call_and_get_rate()
-    # obsolete network_url = Config.NETWORK_API_ENDPOINTS[Config.ACTIVE_NETWORK_NAME]
+
     url = f"{Config.WOC_API_BASE_URL}/address/{address}/unspent"
     timeout = aiohttp.ClientTimeout(total=Config.TIMEOUT_CONNECT)
     try:

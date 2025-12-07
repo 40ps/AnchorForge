@@ -26,7 +26,7 @@ from bsv import (
     hash256
 )
 
-from bsv.hash import sha256 # Import sha256 function directly from bsv.hash module
+from bsv.hash import sha256 
 
 from config import Config
 
@@ -85,7 +85,7 @@ async def hash_file_async(filepath: str, block_size: int = 65536) -> Optional[by
             with open(filepath, 'rb') as f:
                 while chunk := f.read(block_size):
                     hash_obj.update(chunk)
-            return hash_obj.digest() # Gibt rohe bytes zurück
+            return hash_obj.digest() # raw bytes
 
         # Run the blocking file I/O in asyncio's default thread pool
         return await asyncio.to_thread(read_and_hash)
@@ -142,14 +142,14 @@ def ensure_json_file_exists(file_path: str, initial_content: Any = []):
     Prevents 'FileNotFoundError' e.g. for 'r+' Locks.
     """
     if not os.path.exists(file_path):
-        logger.warning(f"Datei nicht gefunden: {file_path}. Erstelle sie neu mit Inhalt: {initial_content}")
+        logger.warning(f"File not found: {file_path}. Create new with content: {initial_content}")
         try:
-            # 'w'-Modus erstellt die Datei.
+            # 'w'-Mode also creates file
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(initial_content, f)
-            logger.info(f"Datei erfolgreich erstellt: {file_path}")
+            logger.info(f"File created successfully: {file_path}")
         except Exception as e:
-            logger.error(f"Konnte Datei {file_path} nicht erstellen: {e}", exc_info=True)
+            logger.error(f"Couldn't create {file_path} : {e}", exc_info=True)
 
 def _write_api_usage(data: dict):
     """
@@ -443,16 +443,16 @@ def deserialize_and_print_transaction(raw_tx_hex: str):
 
 def verify_block_hash(block_header: Dict) -> bool:
     """
-    Verifiziert den Block-Hash durch Berechnung und Vergleich.
+    Verifies Block-Hash by computation and comparison.
     
     Args:
         block_header (Dict): Block-Header-Daten (version, prevBlock, merkleRoot, time, bits, nonce).
     
     Returns:
-        bool: True, wenn der berechnete Block-Hash mit dem erwarteten übereinstimmt.
+        bool: True, if computed block hash matches expected hash.
     """
     try:
-        # Extrahiere Block-Header-Felder (alle in Big-Endian als Hex-Strings)
+        # Extract Block-Header-Fields (all in Big-Endian as Hex-Strings)
         version = int(block_header["version"]).to_bytes(4, byteorder="little")
         prev_block = bytes.fromhex(block_header["previousblockhash"])[::-1]  # Little-Endian
         merkle_root = bytes.fromhex(block_header["merkleroot"])[::-1]  # Little-Endian
@@ -460,27 +460,27 @@ def verify_block_hash(block_header: Dict) -> bool:
         bits = int(block_header["bits"], 16).to_bytes(4, byteorder="little")
         nonce = int(block_header["nonce"]).to_bytes(4, byteorder="little")
 
-        # Verkette die Felder in Little-Endian
+        # concat fields in Little-Endian
         header = version + prev_block + merkle_root + time + bits + nonce
         print(f"Block-Header (Little-Endian): {header.hex()}")
 
-        # Berechne den doppelten SHA256-Hash
-        calculated_hash = hash256(header)[::-1]  # Konvertiere in Big-Endian für Vergleich
+        # Double SHA256-Hash
+        calculated_hash = hash256(header)[::-1]  # convert into Big-Endian for compaison
         expected_hash = block_header["hash"]
-        print(f"Berechneter Block-Hash: {calculated_hash.hex()}")
-        print(f"Erwarteter Block-Hash: {expected_hash}")
+        print(f"Computed Block-Hash: {calculated_hash.hex()}")
+        print(f"Expected Block-Hash: {expected_hash}")
         return calculated_hash.hex() == expected_hash
     except (KeyError, ValueError) as e:
-        print(f"Fehler bei der Verarbeitung des Block-Headers: {e}")
+        print(f"Error processing Block-Header: {e}")
         return False
 
 
 def verify_proof_of_work(block_hash: bytes, bits: str) -> bool:
-    target = bits_to_target(int(bits, 16))  # Konvertiere bits in Zielwert
+    target = bits_to_target(int(bits, 16))  # converts bits into target value
     return int.from_bytes(block_hash, "big") < target
 
 def bits_to_target(bits: int) -> int:
-    """Konvertiert das bits-Feld in einen Zielwert."""
+    """converts bits-Field into target value."""
     exponent = bits >> 24
     mantissa = bits & 0xFFFFFF
     target = mantissa << (8 * (exponent - 3))

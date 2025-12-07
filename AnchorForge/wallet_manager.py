@@ -1,27 +1,26 @@
 # wallet_manager.py
 '''
-Version 25-09-05
-
+.. now git
+Version 25-09-05 
 Version 25-08-16
    make filename dependend on address used to avoid overwriting
 
-
 '''
-import asyncio
+
 import json
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime, timezone
 import logging
 import os
-
 import portalocker
 from portalocker import LOCK_EX
 
+from bsv import PrivateKey, Network
+
 from config import Config
-import utils
+
 import blockchain_api
 
-from bsv import PrivateKey, Network
 
 logger = logging.getLogger(__name__)
 
@@ -47,57 +46,6 @@ def _get_filename_for_address(address: str, network_name: str, simulation: bool 
     
     return f"{base_name}{suffix}"
 
-
-# --- Section local UTXO and Tx Store
-'''
-def load_utxo_store(file_path: str) -> Dict[str, Any]:
-    """Load unused UTXOs from the JSON file."""
-    try:
-        with open(file_path, 'r') as f:
-            portalocker.lock(f, LOCK_EX)
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        # If the file doesn't exist or is empty, return an empty structure
-        return {"address": "", "utxos": [], "network": ""}
-
-def load_used_utxo_store(file_path: str) -> Dict[str, Any]:
-    """Load used UTXOs from the JSON file."""
-    try:
-        with open(file_path, 'r') as f:
-            portalocker.lock(f, LOCK_EX)
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"address": "", "used_utxos": [], "network": ""}
-
-def save_utxo_store(store: Dict, file_path: str):
-    """Save unused UTXOs to the JSON file."""
-    with open(file_path, 'w') as f:
-        portalocker.lock(f, LOCK_EX)
-        json.dump(store, f, indent=4)
-
-def save_used_utxo_store(store: Dict, file_path: str):
-    """Save used UTXOs to the JSON file."""
-    with open(file_path, 'w') as f:
-        portalocker.lock(f,LOCK_EX)
-        json.dump(store, f, indent=4)
-
-
-# --- Transaction Store
-def load_tx_store(file_path: str) -> Dict[str, Any]:
-    """Load Tx from the JSON file."""
-    try:
-        with open(file_path, 'r') as f:
-            portalocker.lock(f, LOCK_EX)
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"address": "", "transactions": [], "network": ""}
-
-def save_tx_store(store: Dict, file_path: str):
-    """Save TXs to the JSON file."""
-    with open(file_path, 'w') as f:
-        portalocker.lock(f, LOCK_EX)
-        json.dump(store, f, indent=4)
-'''
 
 # --- Section local UTXO and Tx Store
 
@@ -176,7 +124,7 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
     for path in [utxo_file_path, tx_file_path, used_utxo_file_path]:
         if not os.path.exists(path):
             print(f"File not found, creating empty store: {path}")
-            # Erstelle eine leere, aber gültige JSON-Struktur
+            # Create empty but valid JSON Structure
             initial_data = {}
             if "used_utxo" in path:
                 initial_data = {"address": "", "network": "", "used_utxos": []}
@@ -249,7 +197,6 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
             save_used_utxo_store(f, used_store)
 
     
-
     # Load and update the UTXO store
     # 3. Lock UTXO Store as last!
     with portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5) as f:
