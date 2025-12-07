@@ -1,15 +1,15 @@
 # main_audit_monitor.py
 import asyncio
 import logging
-import sys
-import os
 import argparse  # We'll use argparse for cleaner argument handling
 
+from bsv import PrivateKey
+
 from config import Config
-import audit_core
+import af_manager
 import utils
 from wallet_manager import _get_filename_for_address
-from bsv import PrivateKey
+
 
 # Configure logging (remains the same)
 logging.basicConfig(
@@ -47,7 +47,7 @@ async def main_monitor(duration_minutes: int | None):
         if duration_minutes:
             # --- DURATION MODE ---
             monitor_task = asyncio.create_task(
-                audit_core.monitor_pending_transactions(
+                af_manager.monitor_pending_transactions(
                     utxo_file_path, 
                     used_utxo_file_path
                 )
@@ -65,7 +65,7 @@ async def main_monitor(duration_minutes: int | None):
                 if await utils.check_process_controls('monitor'):
                     break  # Exit loop if stop is requested
 
-                await audit_core.monitor_pending_transactions(
+                await af_manager.monitor_pending_transactions(
                     utxo_file_path, 
                     used_utxo_file_path
                 )
