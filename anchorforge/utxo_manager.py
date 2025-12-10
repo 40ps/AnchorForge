@@ -71,10 +71,10 @@ from portalocker import LOCK_EX
 
 # --- Project Imports ---
 try:
-    from config import Config
-    import blockchain_api
-    import wallet_manager
-    import utils
+    from anchorforge.config import Config
+    from anchorforge import blockchain_api
+    from anchorforge import wallet_manager
+    from anchorforge import utils
 except ImportError as e:
     print(f"Error: Failed to import project modules. Ensure script is run from the correct directory.")
     print(f"Details: {e}")

@@ -23,17 +23,18 @@ import time # For time measurement
 import portalocker
 from portalocker import LOCK_EX
 
-# --- Project specific imports ---
-from config import Config
-import wallet_manager
-import audit_core
-import key_x509_manager
-import utils
-import data_services # Contains get_iss_location
 from bsv import PrivateKey
 from bsv.hash import sha256
 
-import af_manager
+# --- Project specific imports ---
+from anchorforge.config import Config
+from anchorforge import wallet_manager
+
+from anchorforge import key_x509_manager
+from anchorforge import utils
+from anchorforge import data_services # Contains get_iss_location
+
+from anchorforge import manager
 
 # Configure logging for this specific program
 logging.basicConfig(
@@ -110,7 +111,7 @@ async def process_single_iss_location_event(
 
     # 3. Log it (Generic Service Call)
     # No more file locking, path calculation, or transaction logic here!
-    return await af_manager.log_audit_event(
+    return await manager.log_audit_event(
         data_source=data_string,
         data_storage_mode="embedded",
         record_note=record_note,
@@ -153,7 +154,7 @@ async def main():
     # --- 1. Immediate Backup Handling ---
     if args.backup:
         logging.info("Manual backup requested.")
-        af_manager.perform_backup()
+        manager.perform_backup()
         return
 
     # --- Count is mandatory if not doing a backup ---
@@ -220,7 +221,7 @@ async def main():
             if not is_simulation_run \
                 and status_data['completed_count'] % Config.BACKUP_INTERVAL == 0:
                 logging.info(f"Reached backup interval at {status_data['completed_count']} logs.")
-                af_manager.perform_backup()
+                manager.perform_backup()
 
         else:
             failed_logs += 1

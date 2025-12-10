@@ -69,18 +69,18 @@ from typing import List, Dict
 
 import logging
 
-from config import Config
-import blockchain_api
+from anchorforge.config import Config
+from anchorforge import blockchain_api
 
-from block_manager import BlockHeaderManager
-from blockchain_service import sync_block_headers
+from anchorforge.block_manager import BlockHeaderManager
+from anchorforge.blockchain_service import sync_block_headers
 
-import wallet_manager
-import af_manager 
+from anchorforge import wallet_manager
+from anchorforge import manager 
+
+from anchorforge import utils
+
 import af_anchor
-import utils
-
-
 
 # Configure logging
 logging.basicConfig(
@@ -165,12 +165,12 @@ async def mainmain():
 
     # Start the monitoring task in the background
     monitor_task = asyncio.create_task(
-        af_manager.monitor_pending_transactions(utxo_file_path, used_utxo_file_path, polling_interval_seconds=Config.MONITOR_POLLING_INTERVAL))
+        manager.monitor_pending_transactions(utxo_file_path, used_utxo_file_path, polling_interval_seconds=Config.MONITOR_POLLING_INTERVAL))
     logging.info("Monitor task has been scheduled to run in the background.") 
     
     # Simulate logging an intermediate result
     logging.info("\n--- Initiating Intermediate Result Logging Process ---")
-    await af_manager.log_audit_event()
+    await manager.log_audit_event()
             #intermediate_result_process()
             #utxo_file_path, used_utxo_file_path, tx_file_path)
 

@@ -27,10 +27,10 @@ import time
 import sys
 from datetime import datetime, timezone
 
-from config import Config
-import utils
-import data_services
-import af_manager # Using the shared service layer
+from anchorforge.config import Config
+from anchorforge import utils
+from anchorforge import data_services
+from anchorforge import manager # Using the shared service layer
 
 
 
@@ -109,7 +109,7 @@ async def process_single_coingecko_event(
 
 
     # --- 3. Log it (Generic Service Call) ---
-    return await af_manager.log_audit_event(
+    return await manager.log_audit_event(
         data_source=data_string,
         data_storage_mode="embedded",
         record_note=record_note,
@@ -152,7 +152,7 @@ async def main():
     # --- 1. Immediate Backup Handling ---
     if args.backup:
         logging.info("--- Manual Backup Triggered ---")
-        af_manager.perform_backup()
+        manager.perform_backup()
         return
 
     # Count is mandatory if not doing a backup
@@ -217,7 +217,7 @@ async def main():
             # --- Periodic Backup ---
             if status_data['completed_count'] % Config.BACKUP_INTERVAL == 0:
                 logging.info(f"Backup interval ({Config.BACKUP_INTERVAL}) reached. Performing backup...")
-                af_manager.perform_backup()
+                manager.perform_backup()
 
         else:
             failed_logs += 1

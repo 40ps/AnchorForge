@@ -4,8 +4,8 @@ import logging
 import json
 import aiohttp  # Use aiohttp instead of httpx
 
-import utils
-from config import Config
+from anchorforge import utils
+from anchorforge.config import Config
 
 logger = logging.getLogger(__name__)
 

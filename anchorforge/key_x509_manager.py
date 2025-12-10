@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 
-from config import Config
+from anchorforge.config import Config
 
 # REQ: Config.X509_KEYPAIR_STORE_FILE = "../config/local_x509_keys.json" # see Config.
 

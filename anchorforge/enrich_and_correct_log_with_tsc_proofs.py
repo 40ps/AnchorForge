@@ -1,4 +1,4 @@
-# AF_py/enrich_and_correct_log_with_tsc_proofs.py
+# enrich_and_correct_log_with_tsc_proofs.py
 """
 This script iterates through the audit log and performs three tasks:
 1. Corrects any 'txid' fields that contain unwanted trailing characters.
@@ -20,10 +20,12 @@ import portalocker
 from portalocker import LOCK_EX
 
 # Assuming your project structure allows these imports
-from config import Config
-import audit_core
-import blockchain_api # Needs the get_tsc_merkle_path function!
-import utils
+from anchorforge.config import Config
+# import audit_core
+from anchorforge import blockchain_api # Needs the get_tsc_merkle_path function!
+from anchorforge import utils
+from anchorforge import core_defs
+
 
 # Configure logging
 logging.basicConfig(
@@ -73,7 +75,7 @@ async def enrich_and_correct_log(log_file_path: str, network_name: str):
 
     try:
         with portalocker.Lock(log_file_path, "r+", flags=LOCK_EX, timeout=10) as f_audit:
-            audit_log = audit_core.load_audit_log(f_audit)
+            audit_log = core_defs.load_audit_log(f_audit)
             logging.info(f"Loaded {len(audit_log)} records from the log file.")
 
             for i, record in enumerate(audit_log):
@@ -165,12 +167,11 @@ async def enrich_and_correct_log(log_file_path: str, network_name: str):
             # --- Save the log file only if changes were made ---
             if needs_saving:
                 logging.info("Saving updated audit log...")
-                audit_core.save_audit_log(f_audit, audit_log)
+                core_defs.save_audit_log(f_audit, audit_log)
                 logging.info("Audit log saved successfully.")
             else:
                 logging.info("No records needed TXID/Proof correction or TSC enrichment. Log file unchanged.")
 
-    # ... (rest of exception handling remains the same) ...
     except portalocker.exceptions.LockException:
         logging.error(f"Could not acquire lock for '{log_file_path}'.")
     except FileNotFoundError:

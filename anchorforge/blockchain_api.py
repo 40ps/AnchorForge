@@ -16,7 +16,7 @@ import asyncio
 # --- Import aiohttp instead of httpx to solve local problems ---
 import aiohttp
 
-from config import Config
+from anchorforge.config import Config
 
 VERSION = 2511032020
 

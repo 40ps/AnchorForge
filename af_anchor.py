@@ -23,9 +23,9 @@ from bsv import PrivateKey
 from bsv.hash import sha256
 
 
-from config import Config
-import utils
-import af_manager
+from anchorforge.config import Config
+from anchorforge import utils
+from anchorforge import manager
 
 
 # Configure logging for this specific program
@@ -97,7 +97,7 @@ async def main():
     utils.ensure_json_file_exists(Config.TX_STORE_FILE)
     # utils.ensure_json_file_exists(Config.X509_KEYPAIR_STORE_FILE, initial_content={})
 
-    await af_manager.log_audit_event(
+    await manager.log_audit_event(
             data_source=args.data,
             file_source=args.file,
             data_storage_mode=mode,

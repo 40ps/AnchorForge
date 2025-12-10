@@ -33,9 +33,9 @@ from portalocker import LOCK_EX
 from typing import List, Dict
 
 # Import necessary components from your project
-from config import Config
-import af_core_defs
-import af_verifier
+from anchorforge.config import Config
+from anchorforge import core_defs
+from anchorforge import verifier
 # from block_manager import BlockHeaderManager
 
 VIBECODEVERSION=0.6
@@ -66,7 +66,7 @@ def load_audit_data(log_file_path: str) -> List[Dict]:
         # Use an exclusive lock (LOCK_EX) to prevent collision with monitor/batch processes
         # Using "r" mode for read-only, but still locking exclusively
         with portalocker.Lock(log_file_path, "r", flags=LOCK_EX, timeout=5) as f:
-            data = af_core_defs.load_audit_log(f) # Re-use your existing loader
+            data = core_defs.load_audit_log(f) # Re-use your existing loader
             if data is None: # load_audit_log returns [] on error, but good to check
                  return []
             logger.info(f"Successfully loaded {len(data)} records.")
@@ -131,7 +131,7 @@ async def main_audit():
     parser.add_argument(
         '-o', '--output-file',
         required=True, # default=None,
-        help="Optional: Path to write the audit results. "
+        help="Path to write the audit results. "
              "If not set, the --log-file is updated in-place."
     )
 
@@ -248,7 +248,7 @@ async def main_audit():
 
     # --- 5. Call the V2 Runner Function ---
     try:
-        overall_success = await af_verifier.audit_records_runner(
+        overall_success = await verifier.audit_records_runner(
             all_audit_data=data_to_run, # Pass the (potentially filtered) data
             checks_to_perform=checks_to_perform,
             record_id=args.id,  # Pass the ID, runner will prioritize this

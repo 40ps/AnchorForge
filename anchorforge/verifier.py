@@ -36,11 +36,11 @@ from cryptography.hazmat.backends import default_backend
 
 
 
-from config import Config
-import blockchain_api
-import utils
-import af_core_defs # Shared constants
-from block_manager import BlockHeaderManager
+from anchorforge.config import Config
+from anchorforge import blockchain_api
+from anchorforge import utils
+from anchorforge import core_defs # Shared constants
+from anchorforge.block_manager import BlockHeaderManager
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +260,7 @@ async def _verify_spv_proof(
         return False
 
     # --- Verify Merkle Path ---
-    merkle_proof_verified = af_core_defs.verify_merkle_path(
+    merkle_proof_verified = core_defs.verify_merkle_path(
         txid,
         merkle_proof_to_use.get("index", -1),
         merkle_proof_to_use.get("nodes", []),
@@ -650,7 +650,7 @@ async def audit_record_verifier(log_id: str) -> bool:  #deprecated? # made to wr
     
     try:
         with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX) as f:
-            audit_log = af_core_defs.load_audit_log(f)
+            audit_log = core_defs.load_audit_log(f)
     except FileNotFoundError:
         logger.error(f"Audit log file '{Config.AUDIT_LOG_FILE}' not found. Cannot perform verification.")
         return False
@@ -698,7 +698,7 @@ def verify_ec_payload(
     V2 helper: Verifies a single ECDSA payload triplet based on requested checks.
     """
     logger.info("  --- V2 Verifying ECDSA Payload ---")
-    if len(payload) != 4 or payload[0] != af_core_defs.AUDIT_MODE_EC:
+    if len(payload) != 4 or payload[0] != core_defs.AUDIT_MODE_EC:
         logger.error("  FAIL: Invalid ECDSA payload format or mode byte.")
         return False
     
@@ -760,7 +760,7 @@ def verify_x509_payload(
         bool: True if the verification passes, False otherwise.
     """
     logger.info("  --- V2 Verifying X.509 Payload ---")
-    if len(payload) != 4 or payload[0] != af_core_defs.AUDIT_MODE_X509:
+    if len(payload) != 4 or payload[0] != core_defs.AUDIT_MODE_X509:
         logger.error("  FAIL: Invalid X.509 payload format or mode byte.")
         return False
 
@@ -836,7 +836,7 @@ def _verify_payload_loop( # without async!
     while current_index < len(all_data_pushes):
         mode_byte = all_data_pushes[current_index]
         
-        if mode_byte == af_core_defs.AUDIT_MODE_APP_ID:
+        if mode_byte == core_defs.AUDIT_MODE_APP_ID:
             if len(all_data_pushes) < current_index + 2: 
                 logger.error("   FAIL: APP-ID present but missing value push.")
                 return (False, found_app_id) # Malformed payload
@@ -846,12 +846,12 @@ def _verify_payload_loop( # without async!
             current_index += 2
             continue
 
-        elif mode_byte == af_core_defs.AUDIT_MODE_NOTE:
+        elif mode_byte == core_defs.AUDIT_MODE_NOTE:
             if len(all_data_pushes) < current_index + 2: return (False, found_app_id) # Malformed payload
             current_index += 2
             continue
         
-        elif mode_byte == af_core_defs.AUDIT_MODE_EC:
+        elif mode_byte == core_defs.AUDIT_MODE_EC:
             if len(all_data_pushes) < current_index + 4: return (False, found_app_id) # Malformed payload
             payload_triplet = all_data_pushes[current_index : current_index + 4]
             # Call V2 helper with specific checks
@@ -864,7 +864,7 @@ def _verify_payload_loop( # without async!
                 return (False, found_app_id) # A requested check failed
             current_index += 4
         
-        elif mode_byte == af_core_defs.AUDIT_MODE_X509:
+        elif mode_byte == core_defs.AUDIT_MODE_X509:
             if len(all_data_pushes) < current_index + 4: return (False, found_app_id) # Malformed payload
             payload_triplet = all_data_pushes[current_index : current_index + 4]
             # Call V2 helper with specific checks
