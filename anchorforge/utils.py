@@ -28,7 +28,7 @@ from bsv import (
 
 from bsv.hash import sha256 
 
-from config import Config
+from anchorforge.config import Config
 
 VIBECODEVERSION=0.1
 VERSION=0.1
@@ -522,3 +522,17 @@ async def get_merkle_proof(transaction_id: str) -> dict | None:
         except Exception as e:
             print(f"An unexpected error occurred while fetching Merkle proof: {e}")
             return None
+        
+async def _log_aiohttp_error(response, context: str):
+    """
+    Hilfsfunktion: Liest den Fehlertext aus einer aiohttp-Response und gibt ihn aus.
+    Wird von data_services.py genutzt.
+    """
+    try:
+        # Versuchen, den Body der Antwort zu lesen
+        error_text = await response.text()
+    except Exception:
+        error_text = "<Konnte Antwort-Text nicht lesen>"
+    
+    print(f"❌ ERROR in {context}: HTTP {response.status}")
+    print(f"   Response Body: {error_text}")

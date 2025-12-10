@@ -5,10 +5,10 @@ import argparse  # We'll use argparse for cleaner argument handling
 
 from bsv import PrivateKey
 
-from config import Config
-import af_manager
-import utils
-from wallet_manager import _get_filename_for_address
+from anchorforge.config import Config
+from anchorforge import manager
+from anchorforge import utils
+from anchorforge import wallet_manager
 
 
 # Configure logging (remains the same)
@@ -36,8 +36,8 @@ async def main_monitor(duration_minutes: int | None):
     try:
         priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
         sender_address = priv_key.address()
-        utxo_file_path = _get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME)
-        used_utxo_file_path = _get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "used_utxo_store")
+        utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME)
+        used_utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "used_utxo_store")
     except Exception as e:
         logging.error(f"Failed to get address for dynamic file paths: {e}")
         return
@@ -47,7 +47,7 @@ async def main_monitor(duration_minutes: int | None):
         if duration_minutes:
             # --- DURATION MODE ---
             monitor_task = asyncio.create_task(
-                af_manager.monitor_pending_transactions(
+                manager.monitor_pending_transactions(
                     utxo_file_path, 
                     used_utxo_file_path
                 )
@@ -65,7 +65,7 @@ async def main_monitor(duration_minutes: int | None):
                 if await utils.check_process_controls('monitor'):
                     break  # Exit loop if stop is requested
 
-                await af_manager.monitor_pending_transactions(
+                await manager.monitor_pending_transactions(
                     utxo_file_path, 
                     used_utxo_file_path
                 )

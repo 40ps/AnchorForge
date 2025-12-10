@@ -20,7 +20,7 @@ import portalocker
 from portalocker import LOCK_EX
 from typing import List, Dict, Any
 
-from config import Config
+from anchorforge.config import Config
 
 # Configure logging
 logging.basicConfig(

@@ -12,9 +12,9 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.backends import default_backend
 
-from config import Config
-import blockchain_api
-import af_core_defs # Shared constants
+from anchorforge.config import Config
+from anchorforge import blockchain_api
+from anchorforge import core_defs # Shared constants
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ def build_audit_payload_prehashed(
 
     # Return the payload as a list of bytes, prepending the mode byte
     return [
-        af_core_defs.AUDIT_MODE_EC,
+        core_defs.AUDIT_MODE_EC,
         audit_hash,
         audit_signature, # Ensure Signature object is converted to bytes
         public_signing_key_obj.serialize() # Ensure PublicKey object is converted to bytes
@@ -209,7 +209,7 @@ def build_x509_audit_payload_prehashed(
 
         # 6. Return the payload as a list of bytes, prepending the mode byte
         return [
-            af_core_defs.AUDIT_MODE_X509,
+            core_defs.AUDIT_MODE_X509,
             final_hash_bytes,
             signature,
             certificate_bytes
@@ -305,7 +305,7 @@ def _build_op_return_script(data_pushes: List[bytes], note: Optional[str] = None
 
     all_pushes = list(data_pushes)
     if note:
-        all_pushes.extend([af_core_defs.AUDIT_MODE_NOTE, note.encode('utf-8')])
+        all_pushes.extend([core_defs.AUDIT_MODE_NOTE, note.encode('utf-8')])
 
     for data in all_pushes:
         length = len(data)
@@ -369,7 +369,7 @@ async def create_op_return_transaction(
 
     logger.info(f"OP_RETURN script (Hex): {op_return_script.hex()}")
     
-    af_core_defs.print_op_return_scriptpubkey(op_return_script) # TODO buggy!
+    core_defs.print_op_return_scriptpubkey(op_return_script) # TODO buggy!
 
 
 

@@ -17,9 +17,9 @@ from portalocker import LOCK_EX
 
 from bsv import PrivateKey, Network
 
-from config import Config
+from anchorforge.config import Config
 
-import blockchain_api
+from anchorforge import blockchain_api
 
 
 logger = logging.getLogger(__name__)

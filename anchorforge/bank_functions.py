@@ -10,10 +10,6 @@ from datetime import datetime, timezone
 import uuid # for generating unique identifiers
 import logging
 
-from config import Config
-import blockchain_api
-import wallet_manager
-import audit_core
 
 from bsv import (
     PrivateKey, PublicKey,
@@ -27,6 +23,13 @@ from bsv.hash import sha256 # Import sha256 function directly from bsv.hash modu
 
 from bsv import UnlockingScriptTemplate 
 from typing import cast
+
+
+from anchorforge.config import Config
+from anchorforge import blockchain_api
+from anchorforge import wallet_manager
+
+# import audit_core
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,9 @@ import argparse # Import argparse
 import sys      # Import sys for exit
 import os       # Import os for path checks
 from collections import Counter
-from config import Config
-import audit_core # Import audit_core to use load_audit_log
+from anchorforge.config import Config
+# import audit_core # Import audit_core to use load_audit_log
+
 
 # Configure basic logging
 logging.basicConfig(

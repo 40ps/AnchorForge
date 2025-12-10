@@ -12,12 +12,11 @@ from typing import Optional, Dict, Any
 
 from bsv import PrivateKey, Network
 
-from config import Config
+from anchorforge.config import Config
 
 
 # REQ: Config.KEYPAIR_STORE_FILE = "../config/locakey_pairs.json" # see Config.
 
-from config import Config
 
 def load_key_store(file_path: str) -> Dict:
     """Loads key pairs from a JSON file."""

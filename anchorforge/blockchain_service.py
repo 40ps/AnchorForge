@@ -5,10 +5,10 @@ import logging
 import asyncio
 from typing import Dict, Any, Optional
 
-from config import Config
-from block_manager import BlockHeaderManager
-from blockchain_api import get_chain_info_woc, get_block_header_height, get_block_header
-from utils import verify_block_hash 
+from anchorforge.config import Config
+from anchorforge.block_manager import BlockHeaderManager
+from anchorforge.blockchain_api import get_chain_info_woc, get_block_header_height, get_block_header
+from anchorforge.utils import verify_block_hash 
 
 logger = logging.getLogger(__name__)
 

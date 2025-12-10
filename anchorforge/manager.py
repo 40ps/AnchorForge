@@ -14,18 +14,18 @@ from typing import List, Dict, Optional, Tuple
 import asyncio
 import json
 
-from config import Config
-import wallet_manager
-import utils
-import af_core_defs
-import af_publisher
-import key_x509_manager
-import blockchain_api
-from block_manager import BlockHeaderManager
-
-
 from bsv import PrivateKey
 from bsv.hash import sha256
+
+from anchorforge.config import Config
+from anchorforge import wallet_manager
+from anchorforge import utils
+from anchorforge import core_defs
+from anchorforge import publisher
+from anchorforge import key_x509_manager
+from anchorforge import blockchain_api
+from anchorforge.block_manager import BlockHeaderManager
+
 
 logger = logging.getLogger(__name__)
 
@@ -70,14 +70,14 @@ def _build_payloads(
     op_return_payload_for_tx = app_id_payload + ec_payload + x509_payload """
     
     # 1. App ID
-    payloads = [af_core_defs.AUDIT_MODE_APP_ID, Config.ANCHOR_FORGE_ID.encode('utf-8')]
+    payloads = [core_defs.AUDIT_MODE_APP_ID, Config.ANCHOR_FORGE_ID.encode('utf-8')]
 
     # 2. EC Signature
     assert Config.PRIVATE_SIGNING_KEY_WIF is not None
     if mode == "embedded":
-        payloads += af_publisher.build_audit_payload(content_str, Config.PRIVATE_SIGNING_KEY_WIF)
+        payloads += publisher.build_audit_payload(content_str, Config.PRIVATE_SIGNING_KEY_WIF)
     else:
-        payloads += af_publisher.build_audit_payload_prehashed(data_hash, Config.PRIVATE_SIGNING_KEY_WIF)
+        payloads += publisher.build_audit_payload_prehashed(data_hash, Config.PRIVATE_SIGNING_KEY_WIF)
 
     # 3. X.509 Certificate (Optional)
     # TODO: Make the label configurable if needed
@@ -88,9 +88,9 @@ def _build_payloads(
         priv_pem = cert_info['private_key_pem']
         cert_pem = cert_info['certificate_pem']
         if mode == "embedded":
-            payloads += af_publisher.build_x509_audit_payload(content_str, priv_pem, cert_pem)
+            payloads += publisher.build_x509_audit_payload(content_str, priv_pem, cert_pem)
         else:
-            payloads += af_publisher.build_x509_audit_payload_prehashed(data_hash, priv_pem, cert_pem)
+            payloads += publisher.build_x509_audit_payload_prehashed(data_hash, priv_pem, cert_pem)
             
     return payloads
 
@@ -116,8 +116,8 @@ def _create_audit_record_entry(
             pass
         return None, None, None
 
-    ec_hash, ec_sig, ec_pub = find_payload_data(af_core_defs.AUDIT_MODE_EC)
-    x509_hash, x509_sig, x509_cert = find_payload_data(af_core_defs.AUDIT_MODE_X509)
+    ec_hash, ec_sig, ec_pub = find_payload_data(core_defs.AUDIT_MODE_EC)
+    x509_hash, x509_sig, x509_cert = find_payload_data(core_defs.AUDIT_MODE_X509)
 
     return {
         "log_id": log_id,
@@ -125,7 +125,7 @@ def _create_audit_record_entry(
         "data_storage_mode": mode,
         "original_audit_content": content_str,
         "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
-        "format": af_core_defs.AUDIT_RECORD_FORMAT_V1,
+        "format": core_defs.AUDIT_RECORD_FORMAT_V1,
         "blockchain_record": {
             "txid": None,
             "status": "pending_creation",
@@ -225,7 +225,7 @@ async def log_audit_event(
              portalocker.Lock(path_utxo, "r+", flags=LOCK_EX, timeout=5) as f_utxo:
 
             # Load Stores
-            audit_log = af_core_defs.load_audit_log(f_audit)
+            audit_log = core_defs.load_audit_log(f_audit)
             store_utxo = wallet_manager.load_utxo_store(f_utxo)
             store_tx = wallet_manager.load_tx_store(f_tx)
             store_used = wallet_manager.load_used_utxo_store(f_used)
@@ -240,7 +240,7 @@ async def log_audit_event(
             )
 
             # Create Transaction
-            result = await af_publisher.create_op_return_transaction(
+            result = await publisher.create_op_return_transaction(
                 spending_key_wif=Config.UTXO_STORE_KEY_WIF,
                 recipient_address=address,
                 op_return_data_pushes=op_return_pushes,
@@ -301,7 +301,7 @@ async def log_audit_event(
                 wallet_manager.save_utxo_store(f_utxo, store_utxo)
                 wallet_manager.save_used_utxo_store(f_used, store_used)
                 wallet_manager.save_tx_store(f_tx, store_tx)
-                af_core_defs.save_audit_log(f_audit, audit_log)
+                core_defs.save_audit_log(f_audit, audit_log)
                 
                 logger.info(f"Success. Logged Event {log_id}. TXID: {txid}")
                 return True
@@ -310,7 +310,7 @@ async def log_audit_event(
                 if not dry_run:
                     record["blockchain_record"]["status"] = "tx_creation_failed"
                     audit_log.append(record)
-                    af_core_defs.save_audit_log(f_audit, audit_log)
+                    core_defs.save_audit_log(f_audit, audit_log)
                 
                 logger.error("Transaction creation failed.")
                 return False
@@ -370,7 +370,7 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                 with portalocker.Lock(Config.AUDIT_LOG_FILE, "r", flags=LOCK_EX, timeout=5) as f:
                     
                     # Load the entire audit log, as this is our central source of truth for records and their status.
-                    audit_log = af_core_defs.load_audit_log(f)
+                    audit_log = core_defs.load_audit_log(f)
             except FileNotFoundError:
                 audit_log = [] # If the file doesn't exist, the log is empty
             
@@ -451,7 +451,7 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                     # 1. Fetch Legacy Proof (optional, Fallback, possibly for BTC?)
                     if Config.LEGACY_PROOF: # ignore, prepare for fadeout
                         try:
-                            legacy_proof_data = af_core_defs.normalize_proof_data(await blockchain_api.get_merkle_path(txid))
+                            legacy_proof_data = core_defs.normalize_proof_data(await blockchain_api.get_merkle_path(txid))
                             
                             await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST) # Pause
                         except Exception as e:
@@ -470,7 +470,7 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                     
                     try:
                         # --- call TSC-Function ---
-                        tsc_proof_data = af_core_defs.normalize_proof_data(await blockchain_api.get_tsc_merkle_path(txid))
+                        tsc_proof_data = core_defs.normalize_proof_data(await blockchain_api.get_tsc_merkle_path(txid))
                         await asyncio.sleep(Config.DELAY_NEXT_MONITOR_REQUEST) # Pause
 
                     except Exception as e:
@@ -483,7 +483,7 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                             portalocker.Lock(utxo_file_path, "r+", flags=LOCK_EX, timeout=5) as f_utxo:
 
                             # load data again to ensure work with most uptodate data
-                            current_audit_log = af_core_defs.load_audit_log(f_audit)
+                            current_audit_log = core_defs.load_audit_log(f_audit)
                             utxo_store = wallet_manager.load_utxo_store(f_utxo)
 
                             # data record to be updated
@@ -536,7 +536,7 @@ async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path:
                                             updated_utxos_count += 1
 
                                     if needs_save:
-                                        af_core_defs.save_audit_log(f_audit, current_audit_log)
+                                        core_defs.save_audit_log(f_audit, current_audit_log)
 
                                         if updated_utxos_count > 0:
                                             wallet_manager.save_utxo_store(f_utxo, utxo_store)

@@ -37,10 +37,10 @@ from bsv import (
     Transaction
 )
 
-from config import Config
-import wallet_manager
-import bank_functions
-import blockchain_api
+from anchorforge.config import Config
+from anchorforge import wallet_manager
+from anchorforge import bank_functions
+from anchorforge import blockchain_api
 
 
 # Configure logging
