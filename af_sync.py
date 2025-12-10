@@ -29,10 +29,10 @@ import os
 import sys
 from typing import Dict, Any
 
-from config import Config
-import blockchain_api
-import blockchain_service
-from block_manager import BlockHeaderManager
+from anchorforge.config import Config
+from anchorforge import blockchain_api
+from anchorforge import blockchain_service
+from anchorforge.block_manager import BlockHeaderManager
 
 # Configure logging for this specific program
 logging.basicConfig(
