@@ -24,6 +24,11 @@ def load_x509_key_store(file_path: str) -> Dict:
 
 def save_x509_key_store(key_pairs: Dict, file_path: str):
     """Saves X.509 key and certificate pairs to a JSON file."""
+
+    #  Ensure directory exists before saving
+    directory = os.path.dirname(file_path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
     with open(file_path, 'w') as f:
         json.dump(key_pairs, f, indent=4)
 

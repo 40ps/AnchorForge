@@ -1,4 +1,4 @@
-# AF_py/main_audit.py
+# af_verify.py
 """
 V0.1.3 Audit Runner - The flexible and efficient audit tool.
 
@@ -40,6 +40,12 @@ from anchorforge import verifier
 
 VIBECODEVERSION=0.6
 
+
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+        
 # Configure logging for this script
 logging.basicConfig(
     level=logging.INFO,

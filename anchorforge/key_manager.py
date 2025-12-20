@@ -28,6 +28,14 @@ def load_key_store(file_path: str) -> Dict:
 
 def save_key_store(key_pairs: Dict, file_path: str):
     """Saves key pairs to a JSON file."""
+
+    # Ensure the target directory exists before saving keys.
+    # This prevents FileNotFoundError if 'database/' directory is missing.
+    directory = os.path.dirname(file_path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+
+
     with open(file_path, 'w') as f:
         json.dump(key_pairs, f, indent=4)
 

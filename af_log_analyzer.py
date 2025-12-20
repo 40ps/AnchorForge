@@ -6,15 +6,22 @@ import sys      # Import sys for exit
 import os       # Import os for path checks
 from collections import Counter
 from anchorforge.config import Config
-# import audit_core # Import audit_core to use load_audit_log
+# import audit_core # deprecated Import audit_core to use load_audit_log
 
+
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
 
 # Configure basic logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-    # Keep handlers defined elsewhere if needed, or add StreamHandler here
-    # handlers=[logging.StreamHandler()]
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(Config.LOG_FILE, mode='a', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
 
 # Define field names consistently

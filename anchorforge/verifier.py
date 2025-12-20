@@ -534,7 +534,15 @@ async def audit_records_runner(
     # --- 1. Load resources once ---
     # Initialize the block header manager (loads cache in __init__)
 
-    header_file = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+    # PATHCHANGE: Use Config.BLOCK_HEADER_FILE if available to ensure we look in 'database/'
+    # This aligns the verifier with the sync tool's storage location.
+    if hasattr(Config, 'BLOCK_HEADER_FILE') and Config.BLOCK_HEADERS_FILE:
+        header_file = Config.BLOCK_HEADERS_FILE
+    else:
+        # Fallback to local file, but ideally this should align with where af_sync puts it
+        header_file = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+
+    
     header_manager = BlockHeaderManager(header_file)
     logger.info(f"Block header cache initialized from {header_file}.")
 
@@ -667,6 +675,13 @@ async def audit_record_verifier(log_id: str) -> bool:  #deprecated? # made to wr
         logger.warning(f"  Record '{log_id}' is not confirmed on blockchain (Status: {blockchain_rec.get('status')}). Cannot perform full on-chain verification.")
         return False
     logger.info(f"  Status Check: PASS (Confirmed)")
+
+
+    # PATHCHANGE: Ensure legacy verifier uses correct header path from Config
+    if hasattr(Config, 'BLOCK_HEADER_FILE') and Config.BLOCK_HEADERS_FILE:
+        header_file = Config.BLOCK_HEADERS_FILE
+    else:
+        header_file = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
 
     hm = BlockHeaderManager(f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json")
     checks = {"check_tx_consistency": True, "check_ec_hash": True, "check_ec_signature": True, "check_spv_proof": True}

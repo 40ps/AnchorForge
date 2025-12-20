@@ -1,6 +1,6 @@
 import json
 from typing import Dict, Any
-
+import os
 import portalocker
 from portalocker import LOCK_EX
 
@@ -34,6 +34,10 @@ class BlockHeaderManager:
         """
         Saves the current headers to the file.
         """
+        directory = os.path.dirname(self.file_path)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+
         with open(self.file_path, 'w') as f:
             portalocker.lock(f,LOCK_EX)
             json.dump(self.headers, f, indent=4)

@@ -1,4 +1,5 @@
-# audit_common.py
+# core_defs.py  
+#    was audit_common.py
 '''
 Common definitions, constants, and utility functions shared between 
 the Publisher (creation) and Verifier (checking) modules.

@@ -26,6 +26,11 @@ from anchorforge import blockchain_api # Needs the get_tsc_merkle_path function!
 from anchorforge import utils
 from anchorforge import core_defs
 
+# Ensure log directory exists before initializing logging
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
 
 # Configure logging
 logging.basicConfig(

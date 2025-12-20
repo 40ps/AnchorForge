@@ -25,6 +25,7 @@ import json
 import argparse
 import time
 import sys
+import os
 from datetime import datetime, timezone
 
 from anchorforge.config import Config
@@ -32,7 +33,11 @@ from anchorforge import utils
 from anchorforge import data_services
 from anchorforge import manager # Using the shared service layer
 
-
+# Ensure log directory exists before initializing logging
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
 
 # Configure logging for this specific program
 logging.basicConfig(
@@ -47,7 +52,18 @@ logging.basicConfig(
 #  --- CONSTANTS ---
 DEFAULT_KEYWORD = "coingecko-001"
 PROCESS_NAME = "coingecko"
-STATUS_FILE = "coingecko_batch_status.json"
+
+# Move batch status file to runtime directory
+# If Config.RUNTIME_DIR is defined, use it. Otherwise fallback to 'runtime'.
+RUNTIME_DIR = getattr(Config, 'RUNTIME_DIR', 'runtime')
+if not os.path.exists(RUNTIME_DIR):
+    try:
+        os.makedirs(RUNTIME_DIR, exist_ok=True)
+    except OSError:
+        pass # If we can't create it, we'll likely fail later or write to current dir
+
+STATUS_FILE = os.path.join(RUNTIME_DIR, "coingecko_batch_status.json")
+
 # Original script had a mismatch (log said 3s, code said 10s). 
 # We settle on 10s to be safe with free API limits.
 DELAY_NEXT_REQUEST = 10 
