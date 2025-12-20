@@ -1,0 +1,56 @@
+# Example for local_config/.env
+
+NETWORK=test
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# --- SECRETS ---
+# Wallet Private Keys
+TESTNET_PRIVATE_KEY_WIF=
+TESTNET_UTXO_STORE_KEY_WIF=
+TESTNET_PRIVATE_BANK_KEY_WIF=
+TESTNET_PRIVATE_SIGNING_KEY_WIF=
+TESTNET_BANK_ADDRESS = 
+
+TESTNET_WOC_API_BASE_URL=https://api.whatsonchain.com/v1/bsv/test
+
+
+MAINNET_PRIVATE_KEY_WIF=
+MAINNET_UTXO_STORE_KEY_WIF=
+MAINNET_PRIVATE_SIGNING_KEY_WIF=
+MAINNET_PRIVATE_BANK_KEY_WIF=
+MAINNET_BANK_ADDRESS=
+
+MAINNET_WOC_API_BASE_URL=https://api.whatsonchain.com/v1/bsv/main
+
+
+KEYPAIR_STORE_FILE=../local_config/Keystore/key_pairs.json
+X509_KEYPAIR_STORE_FILE= ../local_config/Keystore/x509_key_pairs.json
+
+# --- APPLICATION SETTINGS ---
+# Transaction Fee Strategy
+FEE_STRATEGY=1
+
+# UTXO Threshold
+LOGGING_UTXO_THRESHOLD=31
+
+# Monitoring Interval
+MONITOR_POLLING_INTERVAL=30
+
+# Mainscript Running Count
+MAINSCRIPT_RUNNING=1000
+
+# Other Flags
+IGNORE_REST=True
