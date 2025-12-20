@@ -25,9 +25,14 @@ from anchorforge import blockchain_api
 logger = logging.getLogger(__name__)
 
 # --- Helper function for dynamic file naming
-def _get_filename_for_address(address: str, network_name: str, simulation: bool = False) -> str:
+def _get_filename_for_address(
+        address: str, 
+        network_name: str = Config.ACTIVE_NETWORK_NAME, 
+        file_type: str = "utxo",
+        simulation: bool = False) -> str:
     """
     Generates a unique filename for the UTXO store based on the address and network.
+    Automatically places the file in the correct directory (CACHE or DATABASE).
     Appends a '.sim.json' suffix if running in simulation mode.
 
     Args:
@@ -36,18 +41,73 @@ def _get_filename_for_address(address: str, network_name: str, simulation: bool 
         simulation (bool, optional): If True, appends '.sim.json'. Defaults to False.
 
     Returns:
-        str: The generated filename.
+        str: The full absolute path to the file.
     """
+
+    # 1. Determine Prefix and Directory based on type
+    if file_type == "utxo":
+        prefix = "utxo_store"
+        target_dir = Config.CACHE_DIR
+    elif file_type == "used":
+        prefix = "used_utxo_store"
+        target_dir = Config.CACHE_DIR
+    elif file_type == "tx":
+        prefix = "tx_store"
+        target_dir = Config.DATABASE_DIR
+    else:
+        # Fallback for custom types, defaults to CACHE
+        prefix = f"{file_type}_store"
+        target_dir = Config.CACHE_DIR
+        logger.warning(f"Unknown file_type '{file_type}'. Defaulting to CACHE directory with prefix '{prefix}'.")
+
+    # 2. Build Filename
+    # Format: prefix_network_shortAddr.json
     short_address = f"{address[:4]}{address[-4:]}"
     base_name = f"utxo_store_{network_name}_{short_address}"
     
     # Add '.sim.json' suffix for simulation runs, otherwise '.json'
     suffix = ".sim.json" if simulation else ".json"
     
-    return f"{base_name}{suffix}"
+    filename = f"{base_name}{suffix}"
+    
+    # 3. Return full path
+    # Config.CACHE_DIR is a pathlib.Path object, so we can use / operator
+    return str(target_dir / filename)
 
 
 # --- Section local UTXO and Tx Store
+
+# --- Helper: Safe Initialization ---
+def _ensure_store_exists(file_path: str, store_type: str):
+    """
+    Checks if a store file exists. If not, creates it with the correct
+    empty JSON structure for that specific type.
+    """
+    if os.path.exists(file_path):
+        return
+
+    print(f"File not found, creating empty store: {file_path}")
+    
+    # Define structure based on explicit type, not filename pattern
+    if store_type == "used":
+        initial_data = {"address": "", "network": "", "used_utxos": []}
+    elif store_type == "utxo":
+        initial_data = {"address": "", "network": "", "utxos": []}
+    elif store_type == "tx":
+        initial_data = {"address": "", "network": "", "transactions": []}
+    else:
+        # Fallback
+        initial_data = {}
+
+    # Ensure directory exists (cache/database)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(initial_data, f, indent=4)
+    except Exception as e:
+        logger.error(f"Failed to create store file {file_path}: {e}")
+
 
 def load_utxo_store(f) -> Dict[str, Any]:
     """Load unused UTXOs from an open file object."""
@@ -94,6 +154,9 @@ def save_tx_store(f, store: Dict):
     f.truncate()
 
 
+
+
+
 async def initialize_utxo_store(private_key_wif: str, network_name: str):
     """
     Initialize the UTXO store with UTXOs from the blockchain.
@@ -112,29 +175,20 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
     sender_address = priv_key.address()
     
     # Derive dynamic file paths based on the address and network
-    utxo_file_path = _get_filename_for_address(str(sender_address), network_name)
-    tx_file_path = f"tx_store_{network_name}_{str(sender_address)[:4]}{str(sender_address)[-4:]}.json"
-    used_utxo_file_path = f"used_utxo_store_{network_name}_{str(sender_address)[:4]}{str(sender_address)[-4:]}.json"
+    utxo_file_path      = _get_filename_for_address(str(sender_address), network_name, file_type="utxo")
+    tx_file_path        = _get_filename_for_address(str(sender_address), network_name, file_type="tx")
+    used_utxo_file_path = _get_filename_for_address(str(sender_address), network_name, file_type="used_utxo")
 
     print(f"Initializing stores for address: {sender_address}")
     print(f"  Using UTXO store file: {utxo_file_path}")
 
 
     # --- Robust File Handling: Ensure files exist before locking with "r+" ---
-    for path in [utxo_file_path, tx_file_path, used_utxo_file_path]:
-        if not os.path.exists(path):
-            print(f"File not found, creating empty store: {path}")
-            # Create empty but valid JSON Structure
-            initial_data = {}
-            if "used_utxo" in path:
-                initial_data = {"address": "", "network": "", "used_utxos": []}
-            elif "utxo_store" in path:
-                initial_data = {"address": "", "network": "", "utxos": []}
-            elif "tx_store" in path:
-                initial_data = {"address": "", "network": "", "transactions": []}
-            
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(initial_data, f, indent=4)
+    _ensure_store_exists(utxo_file_path, "utxo")
+    _ensure_store_exists(tx_file_path, "tx")
+    _ensure_store_exists(used_utxo_file_path, "used")
+
+
 
     # Fetch all UTXOs belonging to the sender's address
     utxos_from_woc = await blockchain_api.fetch_utxos_for_address(str(sender_address))
