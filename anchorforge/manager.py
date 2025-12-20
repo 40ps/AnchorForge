@@ -155,11 +155,11 @@ def perform_backup(target_dir: str = Config.BACKUP_DIR):
         address = str(priv_key.address())
         
         # We always backup the REAL files, not simulation files
-        path_utxo = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, simulation=False)
-        path_tx = path_utxo.replace("utxo_store", "tx_store")
-        path_used = path_utxo.replace("utxo_store", "used_utxo_store")
+        path_utxo = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="utxo")
+        path_used = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="used")
+        path_tx   = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="tx")
         
-        audit_file = Config.AUDIT_LOG_FILE
+        
         files_to_backup = [
             Config.AUDIT_LOG_FILE,
             path_utxo,
@@ -207,22 +207,33 @@ async def log_audit_event(
     assert Config.UTXO_STORE_KEY_WIF is not None
     priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
     address = str(priv_key.address())
-    
-    is_sim = no_broadcast
+
     
     # Define file paths
-    path_utxo = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, simulation=is_sim)
-    path_tx = path_utxo.replace("utxo_store", "tx_store")
-    path_used = path_utxo.replace("utxo_store", "used_utxo_store")
-    path_audit = Config.AUDIT_LOG_FILE.replace(".json", ".sim.json") if is_sim else Config.AUDIT_LOG_FILE
+    path_utxo = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="utxo", simulation=no_broadcast)
+    path_used = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="used", simulation=no_broadcast)
+    path_tx   = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="tx", simulation=no_broadcast)
+    
+    path_audit = Config.AUDIT_LOG_FILE
+
+    if no_broadcast:
+        path_audit = path_audit.replace(".json", ".sim.json")
+
+
+    wallet_manager._ensure_store_exists(path_utxo, "utxo")
+    wallet_manager._ensure_store_exists(path_used, "used")
+    wallet_manager._ensure_store_exists(path_tx, "tx")
+
+    utils.ensure_json_file_exists(path_audit, initial_content=[])
+
 
     # 3. Execution (Locking & Transaction)
     try:
         # Atomic lock on all stores
         with portalocker.Lock(path_audit, "r+", flags=LOCK_EX, timeout=5) as f_audit, \
-             portalocker.Lock(path_tx, "r+", flags=LOCK_EX, timeout=5) as f_tx, \
-             portalocker.Lock(path_used, "r+", flags=LOCK_EX, timeout=5) as f_used, \
-             portalocker.Lock(path_utxo, "r+", flags=LOCK_EX, timeout=5) as f_utxo:
+             portalocker.Lock(path_tx,    "r+", flags=LOCK_EX, timeout=5) as f_tx, \
+             portalocker.Lock(path_used,  "r+", flags=LOCK_EX, timeout=5) as f_used, \
+             portalocker.Lock(path_utxo,  "r+", flags=LOCK_EX, timeout=5) as f_utxo:
 
             # Load Stores
             audit_log = core_defs.load_audit_log(f_audit)
@@ -324,17 +335,30 @@ async def log_audit_event(
     
 
     
-async def monitor_pending_transactions(utxo_file_path: str, used_utxo_file_path: str, polling_interval_seconds: int = 30):
+async def monitor_pending_transactions(
+        # DEPRECATED utxo_file_path: str, used_utxo_file_path: str, 
+        polling_interval_seconds: int = 30):
     """
     Monitors locally stored pending transactions for confirmation on the blockchain.
     Once confirmed, fetches and stores their Merkle path and updates UTXO heights.
 
     Args:
-        utxo_file_path (str): The file path for the UTXO store.
-        used_utxo_file_path (str): The file path for the used UTXO store.
+        deprecated utxo_file_path (str): The file path for the UTXO store.
+        deprecated used_utxo_file_path (str): The file path for the used UTXO store.
         polling_interval_seconds (int): How often to check for confirmations.
     """
     logger.info(f"\n--- Starting Transaction Confirmation Monitor (polling every {polling_interval_seconds}s) ---")
+
+
+    # Determine paths
+    priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
+    address = str(priv_key.address())
+    
+    # PATHCHANGE: Nutze die neue Funktion für UTXO Pfad
+    utxo_file_path = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="utxo")
+    # Monitor braucht used_store eigentlich nicht zwingend, aber wir lassen es drin wenn du willst
+    
+
 
     # only start if new blocks exist.
     last_known_block_height = 0
