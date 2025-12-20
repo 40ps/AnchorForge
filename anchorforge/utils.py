@@ -33,9 +33,9 @@ from anchorforge.config import Config
 VIBECODEVERSION=0.1
 VERSION=0.1
 
-API_COUNTER_FILE = "api_usage_counter.json"  # To avoid overusing API
-STATUS_FILE = "coingecko_batch_status.json"  # for recovery mechanism
-DEFAULT_STATUS_FILE = "coingecko_batch_status.json" # Default for backward compatibility
+API_COUNTER_FILE = str(Config.CACHE_DIR/"api_usage_counter.json")  # To avoid overusing API
+STATUS_FILE = str(Config.CACHE_DIR/"coingecko_batch_status.json")  # for recovery mechanism
+DEFAULT_STATUS_FILE = str(Config.CACHE_DIR/"batch_status.json") # Default for backward compatibility
 
 logger = logging.getLogger(__name__)
 
@@ -268,8 +268,9 @@ async def check_process_controls(process_name: str):
     Checks for pause and stop flag files for a given process.
     Returns True if the process should stop, False otherwise.
     """
-    pause_flag = f"{process_name}.pause.flag"
-    stop_flag = f"{process_name}.stop.flag"
+    base = Config.RUNTIME_DIR
+    pause_flag = base / f"{process_name}.pause.flag"
+    stop_flag = base / f"{process_name}.stop.flag"
 
     # Check for pause flag
     if os.path.exists(pause_flag):
