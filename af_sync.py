@@ -1,4 +1,4 @@
-# main_sync_headers.py
+# af_sync.py
 '''
 This program is dedicated to synchronizing blockchain block headers.
 It is intended to be run separately from the audit process to ensure
@@ -33,6 +33,12 @@ from anchorforge.config import Config
 from anchorforge import blockchain_api
 from anchorforge import blockchain_service
 from anchorforge.block_manager import BlockHeaderManager
+
+
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
 
 # Configure logging for this specific program
 logging.basicConfig(
@@ -128,8 +134,15 @@ async def main_sync_headers():
 
     logging.info("\n--- Starting Block Header Synchronization ---")
 
-    default_filename = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
-    output_file = args.output if args.output else default_filename
+    # Use Config.BLOCK_HEADERS_FILE as default if available (pointing to database/),
+    # otherwise fallback to local filename generation.
+    if args.output:
+        output_file = args.output
+    elif hasattr(Config, 'BLOCK_HEADERS_FILE') and Config.BLOCK_HEADERS_FILE:
+         output_file = Config.BLOCK_HEADERS_FILE
+    else:
+        output_file = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
+
 
     
     # 2. Conversion Mode (Offline)
@@ -139,6 +152,13 @@ async def main_sync_headers():
 
     # 3. Sync Mode (Online)
     logger.info(f"--- Starting Sync (Target: {output_file}) ---")
+
+
+    # Ensure directory for output file exists (e.g. database/)
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.exists(output_dir):
+        logger.info(f"Creating directory for block headers: {output_dir}")
+        os.makedirs(output_dir, exist_ok=True)
 
     # We initialize the manager with the output file. 
     # If it exists, it loads it. If not, it starts empty.

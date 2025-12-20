@@ -114,6 +114,16 @@ def save_json_file(filepath: str, data: Any):
     Safely saves data to a JSON file using an exclusive lock.
     Uses 'w' mode which creates or truncates.
     """
+    # Ensure directory exists before saving
+    directory = os.path.dirname(filepath)
+    if directory and not os.path.exists(directory):
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except OSError as e:
+            logger.error(f"Failed to create directory {directory}: {e}")
+            return
+
+
     try:
         with portalocker.Lock(filepath, "w", flags=LOCK_EX, timeout=5) as f:
             json.dump(data, f, indent=4)
@@ -143,13 +153,24 @@ def _resolve_filenames(args: argparse.Namespace) -> Dict[str, str]:
         logger.info(f"Resolving filenames for address: {args.address} on network: {Config.ACTIVE_NETWORK_NAME}")
         try:
             address = str(args.address)
-            # Mimic naming convention from wallet_manager.py
-            short_address = f"{address[:4]}{address[-4:]}"
             network = Config.ACTIVE_NETWORK_NAME
             
-            utxo_file = f"utxo_store_{network}_{short_address}.json"
-            used_file = f"used_utxo_store_{network}_{short_address}.json"
-            invalid_file = f"utxo_store_{network}_{short_address}_invalid.json"
+            #  Use wallet_manager to resolve paths to the 'database' directory
+            # This ensures consistency with the rest of the application
+            # We explicitly ask for the 'utxo_store' type
+            utxo_file = wallet_manager._get_filename_for_address(
+                address, network, file_type="utxo"
+            )
+            
+            used_file = wallet_manager._get_filename_for_address(
+                address, network, file_type="used"
+            )
+            # For invalid file, we might not have a dedicated type in wallet_manager yet,
+            # so we can derive it from the utxo_file path or add a type if wallet_manager supports it.
+            # Assuming wallet_manager doesn't have "invalid_utxo_store", we derive it safely:
+            base, ext = os.path.splitext(utxo_file)
+            invalid_file = f"{base}_invalid{ext}"
+            
 
             logger.info(f"Resolved UTXO file: {utxo_file}")
             logger.info(f"Resolved USED file: {used_file}")
@@ -729,6 +750,22 @@ async def do_consolidate(args: argparse.Namespace, filenames: Dict[str, str]):
 
 def setup_logging():
     """Configures the main logger."""
+        
+    # Ensure log directory exists before initializing logging
+    if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+        log_dir = os.path.dirname(Config.LOG_FILE)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+            
+    # Default handlers
+    # Explicit type annotation to appease Pylance/MyPy regarding variance
+    handlers: List[logging.Handler] = [logging.StreamHandler()]
+
+    # Add file handler if configured
+    if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+        handlers.append(logging.FileHandler(Config.LOG_FILE, mode='a', encoding='utf-8'))
+
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',

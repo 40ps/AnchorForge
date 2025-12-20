@@ -336,15 +336,16 @@ async def log_audit_event(
 
     
 async def monitor_pending_transactions(
-        # DEPRECATED utxo_file_path: str, used_utxo_file_path: str, 
+        utxo_file_path: str, 
+        used_utxo_file_path: str, 
         polling_interval_seconds: int = 30):
     """
     Monitors locally stored pending transactions for confirmation on the blockchain.
     Once confirmed, fetches and stores their Merkle path and updates UTXO heights.
 
     Args:
-        deprecated utxo_file_path (str): The file path for the UTXO store.
-        deprecated used_utxo_file_path (str): The file path for the used UTXO store.
+        utxo_file_path (str): The file path for the UTXO store.
+        used_utxo_file_path (str): The file path for the used UTXO store.
         polling_interval_seconds (int): How often to check for confirmations.
     """
     logger.info(f"\n--- Starting Transaction Confirmation Monitor (polling every {polling_interval_seconds}s) ---")
@@ -355,7 +356,7 @@ async def monitor_pending_transactions(
     address = str(priv_key.address())
     
     # PATHCHANGE: Nutze die neue Funktion für UTXO Pfad
-    utxo_file_path = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="utxo")
+    # utxo_file_path = wallet_manager._get_filename_for_address(address, Config.ACTIVE_NETWORK_NAME, file_type="utxo")
     # Monitor braucht used_store eigentlich nicht zwingend, aber wir lassen es drin wenn du willst
     
 

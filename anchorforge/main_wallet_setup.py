@@ -22,6 +22,7 @@ V25-08-16: all
 '''
 
 import asyncio
+import os
 import logging
 from typing import Dict, Any
 from datetime import datetime, timezone
@@ -41,6 +42,13 @@ from anchorforge.config import Config
 from anchorforge import wallet_manager
 from anchorforge import bank_functions
 from anchorforge import blockchain_api
+
+
+# Ensure log directory exists before initializing logging
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
 
 
 # Configure logging
@@ -136,7 +144,13 @@ async def create_utxolets(size : int = 1000, number : int = 5):
                 })
 
 
-        utxo_file_path = wallet_manager._get_filename_for_address(str(recipient_address), Config.ACTIVE_NETWORK_NAME)
+        utxo_file_path = wallet_manager._get_filename_for_address(recipient_address, Config.ACTIVE_NETWORK_NAME, file_type="utxo")
+
+        # Ensure directory exists before locking/writing
+        utxo_dir = os.path.dirname(utxo_file_path)
+        if utxo_dir and not os.path.exists(utxo_dir):
+            os.makedirs(utxo_dir, exist_ok=True)
+
         with portalocker.Lock(utxo_file_path, "a+", flags=LOCK_EX, timeout=5) as f_utxo:
             utxo_store = wallet_manager.load_utxo_store(f_utxo)
             utxo_store["address"] = str(recipient_address)

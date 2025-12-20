@@ -10,6 +10,40 @@ Examples:
 """
 import os
 import argparse
+import sys
+
+try:
+    from anchorforge.config import Config
+except ImportError:
+    # Fallback logic if package structure is different or running standalone
+    try:
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from anchorforge.config import Config
+    except ImportError:
+        Config = None
+
+def get_flag_path(process_name, flag_type):
+    """
+    Constructs the path for the flag file, ensuring it goes into the 'runtime' directory.
+    """
+    filename = f"{process_name}.{flag_type}.flag"
+    
+    # Use a dedicated runtime directory instead of the root folder.
+    # If Config defines a RUNTIME_DIR, use it. Otherwise default to 'runtime'.
+    runtime_dir = "runtime"
+    if Config and hasattr(Config, 'RUNTIME_DIR'):
+        runtime_dir = Config.RUNTIME_DIR
+    
+    # Ensure directory exists
+    if not os.path.exists(runtime_dir):
+        try:
+            os.makedirs(runtime_dir, exist_ok=True)
+        except OSError as e:
+            print(f"Error creating runtime directory '{runtime_dir}': {e}")
+            return filename # Fallback to current dir if we can't create runtime
+
+    return os.path.join(runtime_dir, filename)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -31,7 +65,7 @@ def main():
     args = parser.parse_args()
 
     if args.action == 'pause':
-        file_name = f"{args.process_name}.pause.flag"
+        file_name = get_flag_path(args.process_name, "pause")
         try:
             with open(file_name, 'w') as f:
                 pass
@@ -40,7 +74,7 @@ def main():
             print(f"Error creating file '{file_name}': {e}")
 
     elif args.action == 'resume':
-        file_name = f"{args.process_name}.pause.flag"
+        file_name = get_flag_path(args.process_name, "pause")
         try:
             if os.path.exists(file_name):
                 os.remove(file_name)
@@ -51,7 +85,7 @@ def main():
             print(f"Error removing file '{file_name}': {e}")
             
     elif args.action == 'stop':
-        file_name = f"{args.process_name}.stop.flag"
+        file_name = get_flag_path(args.process_name, "stop")
         try:
             with open(file_name, 'w') as f:
                 pass

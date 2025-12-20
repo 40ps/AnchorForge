@@ -39,7 +39,7 @@ DEFAULT_STATUS_FILE = str(Config.CACHE_DIR/"batch_status.json") # Default for ba
 
 logger = logging.getLogger(__name__)
 
-# --- NEW: Function to resolve content from string or file path ---
+# --- Function to resolve content from string or file path ---
 def get_content_from_source(source: str | None) -> str | None:
     """
     Reads content either directly from a string or from a file path.

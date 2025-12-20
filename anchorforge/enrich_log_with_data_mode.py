@@ -22,6 +22,12 @@ from typing import List, Dict, Any
 
 from anchorforge.config import Config
 
+# Ensure log directory exists before initializing logging
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -65,6 +71,14 @@ def save_log_file(filepath: str, data: List[Dict[str, Any]]):
     Safely saves the migrated data to the new output file using an exclusive lock.
     """
     logger.info(f"Saving migrated data to output file: {filepath}")
+
+    # Ensure output directory exists before saving
+    directory = os.path.dirname(filepath)
+    if directory and not os.path.exists(directory):
+         logger.info(f"Creating output directory: {directory}")
+         os.makedirs(directory, exist_ok=True)
+
+
     try:
         # Lock exclusively to write the new file
         with portalocker.Lock(filepath, "w", flags=LOCK_EX, timeout=5) as f:

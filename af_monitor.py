@@ -1,6 +1,7 @@
-# main_audit_monitor.py
+# af_monitor.py
 import asyncio
 import logging
+import os
 import argparse  # We'll use argparse for cleaner argument handling
 
 from bsv import PrivateKey
@@ -10,6 +11,10 @@ from anchorforge import manager
 from anchorforge import utils
 from anchorforge import wallet_manager
 
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
 
 # Configure logging (remains the same)
 logging.basicConfig(
@@ -36,8 +41,18 @@ async def main_monitor(duration_minutes: int | None):
     try:
         priv_key = PrivateKey(Config.UTXO_STORE_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
         sender_address = priv_key.address()
-        utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME)
-        used_utxo_file_path = wallet_manager._get_filename_for_address(str(sender_address), Config.ACTIVE_NETWORK_NAME).replace("utxo_store", "used_utxo_store")
+
+        utxo_file_path = wallet_manager._get_filename_for_address(
+            str(sender_address), 
+            Config.ACTIVE_NETWORK_NAME, 
+            file_type="utxo"
+        )
+        
+        used_utxo_file_path = wallet_manager._get_filename_for_address(
+            str(sender_address), 
+            Config.ACTIVE_NETWORK_NAME, 
+            file_type="used"
+        )
     except Exception as e:
         logging.error(f"Failed to get address for dynamic file paths: {e}")
         return

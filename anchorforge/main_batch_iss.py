@@ -36,6 +36,12 @@ from anchorforge import data_services # Contains get_iss_location
 
 from anchorforge import manager
 
+# Ensure log directory exists before initializing logging
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+
 # Configure logging for this specific program
 logging.basicConfig(
     level=logging.INFO,
@@ -60,8 +66,18 @@ PoC: github.com/40ps/AnchorForge
 DEFAULT_KEYWORD = "iss-location-001"
 # Process name for pause/stop controls
 PROCESS_NAME = "iss"
-# Status file specific to this batch type
-STATUS_FILE = "iss_batch_status.json"
+
+# Move batch status file to runtime directory
+# If Config.RUNTIME_DIR is defined, use it. Otherwise fallback to 'runtime'.
+RUNTIME_DIR = getattr(Config, 'RUNTIME_DIR', 'runtime')
+if not os.path.exists(RUNTIME_DIR):
+    try:
+        os.makedirs(RUNTIME_DIR, exist_ok=True)
+    except OSError:
+        pass # If we can't create it, we'll likely fail later or write to current dir
+
+STATUS_FILE = os.path.join(RUNTIME_DIR, "iss_batch_status.json")
+
 
 DELAY_NEXT_ISS_REQUEST = 1 # Not more 1 API Call /s for wheretheiss.at and whatsonchain
 

@@ -1,4 +1,4 @@
-# main_audit_log_event.py
+# af_anchor.py
 '''
 This program serves as the entry point for logging a single audit event.
 (Version 0.3: Now supports --data for 'embedded' and --file for 'by_reference')
@@ -27,6 +27,10 @@ from anchorforge.config import Config
 from anchorforge import utils
 from anchorforge import manager
 
+if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
+    log_dir = os.path.dirname(Config.LOG_FILE)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
 
 # Configure logging for this specific program
 logging.basicConfig(
