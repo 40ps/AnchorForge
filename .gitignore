@@ -41,6 +41,7 @@ audit_log_main/*
 *.tmp
 
 *.ps1
+*.pyc
 
 
 *.egg-info/
@@ -50,6 +51,8 @@ audit_log_main/*
 Thumbs.db  # Windows-Dateien
 .env
 .flaskenv
+
+
 key_pairs.json # Secure it!
 
 
