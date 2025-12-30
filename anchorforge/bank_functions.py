@@ -52,7 +52,7 @@ async def load_bank(private_key_wif: str) -> Optional[str]:
     logger.info(f"  Source Address: {sender_address}")
     logger.info(f"  Destination Address (Bank): {Config.BANK_ADDRESS}")
 
-    utxos = await blockchain_api.fetch_utxos_for_address(str(sender_address))
+    utxos = await blockchain_api.fetch_normalized_utxos_for_address(str(sender_address))
 
     if not utxos:
         logger.info(f"  No UTXOs found for address {sender_address}. Nothing to send to the bank.")
@@ -125,7 +125,7 @@ async def consolidate_utxos(private_key_wif: str) -> Optional[str]:
     priv_key = PrivateKey(private_key_wif, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = priv_key.address()
 
-    utxos = await blockchain_api.fetch_utxos_for_address(str(sender_address))
+    utxos = await blockchain_api.fetch_normalized_utxos_for_address(str(sender_address))
 
     if not utxos:
         logger.info(f"No UTXOs found for address {sender_address}. Nothing to consolidate.")
@@ -211,7 +211,7 @@ async def consolidate_addresses_into_bank(private_key_wifs: list[str]) -> Option
         current_address = current_priv_key.address()
         logger.info(f"  Fetching UTXOs for address: {current_address}")
         
-        utxos = await blockchain_api.fetch_utxos_for_address(str(current_address))
+        utxos = await blockchain_api.fetch_normalized_utxos_for_address(str(current_address))
         
         if not utxos:
             logger.warning(f"  No UTXOs found for {current_address}. Skipping.")
@@ -281,7 +281,7 @@ async def create_working_utxos(recipient_address: str, utxo_value: int, num_utxo
     priv_key_bank = PrivateKey(Config.PRIVATE_BANK_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
     bank_address = priv_key_bank.address()
 
-    utxos_from_bank = await blockchain_api.fetch_utxos_for_address(str(bank_address))
+    utxos_from_bank = await blockchain_api.fetch_normalized_utxos_for_address(str(bank_address))
 
     if not utxos_from_bank:
         logger.info(f"No UTXOs found for bank address {bank_address}. Please ensure the bank is funded and the UTXOs are confirmed.")

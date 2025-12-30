@@ -326,8 +326,34 @@ async def get_merkle_path(txid: str) -> Optional[Dict[str, Any]]:
         logger.error(f"An unexpected error occurred in get_merkle_path: {e}")
         return None
 
+def _normalize_utxo(u: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Normalises UTXO-Dicts to Keys: txid, vout, satoshis, height(optional)
+    """
+    txid = u.get("txid") or u.get("tx_hash")
+    vout = u.get("vout")
+    if vout is None:
+        vout = u.get("tx_pos")
+    sats = u.get("satoshis")
+    if sats is None:
+        sats = u.get("value")
+
+    if txid is None or vout is None or sats is None:
+        return None
+
+    return {
+        "txid": str(txid),
+        "vout": int(vout),
+        "satoshis": int(sats),
+        "height": int(u.get("height", -1)) if u.get("height") is not None else -1,
+    }
+
 async def fetch_utxos_for_address(address: str) -> List[Dict[str, Any]]:
-    """Fetch all unspent transaction outputs (UTXOs) for a given address."""
+    """
+    RAW WhatsOnChain response
+    DO NOT use directly for tx constuction
+    use fetch_normalized_utxos_for_address() instead
+    Fetch all unspent transaction outputs (UTXOs) for a given address."""
 
     _record_api_call_and_get_rate()
 
@@ -344,3 +370,16 @@ async def fetch_utxos_for_address(address: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"An unexpected error occurred in fetch_utxos_for_address: {e}")
         return []
+    
+async def fetch_normalized_utxos_for_address(address: str) -> List[Dict[str, Any]]:
+    utxos_raw = await fetch_utxos_for_address(address)
+    utxos: List[Dict[str, Any]] = []
+
+    for u in utxos_raw:
+        nu = _normalize_utxo(u)
+        if not nu:
+            logger.warning(f"Skipping unrecognized UTXO format: keys={list(u.keys())}")
+            continue
+        utxos.append(nu)
+    
+    return utxos

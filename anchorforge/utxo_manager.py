@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # utxo_manager.py
+
+# ATTENTION: TODO: Normalized UTXO?  fetch_normalized_utxo_for_address()
+
 """
 UTXO Manager (utxo_manager.py)
 Version: 2.2

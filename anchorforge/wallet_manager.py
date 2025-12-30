@@ -191,7 +191,7 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
 
 
     # Fetch all UTXOs belonging to the sender's address
-    utxos_from_woc = await blockchain_api.fetch_utxos_for_address(str(sender_address))
+    utxos_from_woc = await blockchain_api.fetch_normalized_utxos_for_address(str(sender_address))
 
     if not utxos_from_woc:
         print(f"No UTXOs found for address {sender_address}. Using existing local store.")
