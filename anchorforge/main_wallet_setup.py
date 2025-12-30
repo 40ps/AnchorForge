@@ -23,6 +23,7 @@ V25-08-16: all
 
 import asyncio
 import os
+import code
 import logging
 from typing import Dict, Any
 from datetime import datetime, timezone
@@ -190,6 +191,8 @@ async def setup_wallet_environment():
 
 
 async def main():
+
+   
     # main_wallet_setup.py --sync
     # main_wallet_setup.py --create-utxolets 1000 2000
     parser = argparse.ArgumentParser(description="Manage the wallet environment.")
@@ -197,10 +200,24 @@ async def main():
     parser.add_argument( '--create-utxolets', nargs=2, metavar=('SIZE', 'NUMBER'), type=int, help="Create a number of smaller UTXOs of a specific size.")
 
     parser.add_argument( '--mainnet', action='store_true',help="A safety flag to confirm that you intend to write to the mainnet. Required if ACTIVE_NETWORK is 'main'.")
-    
+    parser.add_argument('--interactive', action='store_true',
+                        help="Change into interactive mode")
 
     args = parser.parse_args()
 
+    if args.interactive:
+        print("\n=== Wechsel in den interaktiven Modus ===")
+        print("Du hast vollen Zugriff auf alle lokalen Variablen (z. B. 'args').")
+        print("Beende mit exit() oder Ctrl+D (EOF).\n")
+
+        namespace = globals().copy()
+        namespace.update(locals())
+        namespace['asyncio'] = asyncio  # explizit verfügbar machen
+
+        code.interact(local=namespace)
+        
+        
+        print("Finishing local namespace")
     if args.sync:
         await initialize_utxo_store()
 
