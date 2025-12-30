@@ -230,10 +230,12 @@ async def log_audit_event(
     # 3. Execution (Locking & Transaction)
     try:
         # Atomic lock on all stores
-        with portalocker.Lock(path_audit, "r+", flags=LOCK_EX, timeout=5) as f_audit, \
-             portalocker.Lock(path_tx,    "r+", flags=LOCK_EX, timeout=5) as f_tx, \
-             portalocker.Lock(path_used,  "r+", flags=LOCK_EX, timeout=5) as f_used, \
-             portalocker.Lock(path_utxo,  "r+", flags=LOCK_EX, timeout=5) as f_utxo:
+        # INCREASED TIMEOUT: Network calls might happen inside create_op_return_transaction (fetching raw transactions)
+        LOCK_TIMEOUT = 60
+        with portalocker.Lock(path_audit, "r+", flags=LOCK_EX, timeout=LOCK_TIMEOUT) as f_audit, \
+             portalocker.Lock(path_tx,    "r+", flags=LOCK_EX, timeout=LOCK_TIMEOUT) as f_tx, \
+             portalocker.Lock(path_used,  "r+", flags=LOCK_EX, timeout=LOCK_TIMEOUT) as f_used, \
+             portalocker.Lock(path_utxo,  "r+", flags=LOCK_EX, timeout=LOCK_TIMEOUT) as f_utxo:
 
             # Load Stores
             audit_log = core_defs.load_audit_log(f_audit)
@@ -327,7 +329,7 @@ async def log_audit_event(
                 return False
 
     except portalocker.exceptions.LockException:
-        logger.error("Could not acquire file locks. Is another process running?")
+        logger.error("Could not acquire file locks within {LOCK_TIMEOUT}. Is another process running?")
         return False
     except Exception as e:
         logger.error(f"Service Error: {e}", exc_info=True)

@@ -536,7 +536,7 @@ async def audit_records_runner(
 
     # PATHCHANGE: Use Config.BLOCK_HEADER_FILE if available to ensure we look in 'database/'
     # This aligns the verifier with the sync tool's storage location.
-    if hasattr(Config, 'BLOCK_HEADER_FILE') and Config.BLOCK_HEADERS_FILE:
+    if hasattr(Config, 'BLOCK_HEADERS_FILE') and Config.BLOCK_HEADERS_FILE:
         header_file = Config.BLOCK_HEADERS_FILE
     else:
         # Fallback to local file, but ideally this should align with where af_sync puts it
@@ -678,7 +678,7 @@ async def audit_record_verifier(log_id: str) -> bool:  #deprecated? # made to wr
 
 
     # PATHCHANGE: Ensure legacy verifier uses correct header path from Config
-    if hasattr(Config, 'BLOCK_HEADER_FILE') and Config.BLOCK_HEADERS_FILE:
+    if hasattr(Config, 'BLOCK_HEADERS_FILE') and Config.BLOCK_HEADERS_FILE:
         header_file = Config.BLOCK_HEADERS_FILE
     else:
         header_file = f"block_headers_{Config.ACTIVE_NETWORK_NAME}.json"
