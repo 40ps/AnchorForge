@@ -1,22 +1,78 @@
-local_config/
+# .gitignore
+
+# Secrets
+!local_config/dot_env_template
 local_config/.env
 local_config/.env.py
 local_config/Keystore
-vai/test_suite.py
-vai/logs
-vai/*.log
-vai/*.json
-vai/*.json*
-vai/__pycache__/
-vai/*.pyc
-vai/*.pyo
-vai/venv/
-vai/dist/
-vai/build/
-vai/*.egg-info/
-vai/.idea/  # für PyCharm
-vai/.vscode/  # für VS Code
-vai/.DS_Store  # macOS-Dateien
-vai/Thumbs.db  # Windows-Dateien
-vai/.env
-vai/.flaskenv
+
+# Python Environment 
+venv/
+.venv/
+
+# Python Bytecode
+__pycache__/
+
+anchorforge/__pycache__
+
+cache/*
+cache/.keep
+
+database/*
+database/.keep
+
+output/*
+output/.keep
+
+
+playground/*
+!playground/.keep
+
+runtime/*
+runtime/.keep
+
+backup/*
+Legacy/*
+genesis_info/*
+old_logs/*
+audit_log_main/*
+
+*.log
+*.tmp
+
+*.ps1
+
+
+*.egg-info/
+.idea/  # für PyCharm
+.vscode/  # für VS Code
+.DS_Store  # macOS-Dateien
+Thumbs.db  # Windows-Dateien
+.env
+.flaskenv
+key_pairs.json # Secure it!
+
+
+AnchorForge/test_suite.py
+AnchorForge/logs
+AnchorForge/*.log
+AnchorForge/*.json
+AnchorForge/*.json*
+AnchorForge/__pycache__/
+AnchorForge/*.pyc
+AnchorForge/*.pyo
+AnchorForge/venv/
+AnchorForge/dist/
+AnchorForge/build/
+AnchorForge/*.egg-info/
+AnchorForge/.idea/  # für PyCharm
+AnchorForge/.vscode/  # für VS Code
+AnchorForge/.DS_Store  # macOS-Dateien
+AnchorForge/Thumbs.db  # Windows-Dateien
+AnchorForge/.env
+AnchorForge/.flaskenv
+AnchorForge/key_pairs.json # Secure it!
+Doc/*
+Doc
+BU/
+BU/*
