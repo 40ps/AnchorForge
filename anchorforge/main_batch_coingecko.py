@@ -208,7 +208,7 @@ async def main():
 
     # Ensure dependencies
     utils.ensure_json_file_exists(Config.AUDIT_LOG_FILE)
-    utils.ensure_json_file_exists(Config.TX_STORE_FILE)
+    # Removed: utils.ensure_json_file_exists(Config.TX_STORE_FILE), the store is handled by the manager
     # utils.ensure_json_file_exists(Config.X509_KEYPAIR_STORE_FILE, initial_content={})
  
     successful_logs_this_run = 0

@@ -208,7 +208,7 @@ async def main():
     utils.write_batch_status(status_data, STATUS_FILE) # Pass status file name
 
     utils.ensure_json_file_exists(Config.AUDIT_LOG_FILE)
-    utils.ensure_json_file_exists(Config.TX_STORE_FILE)
+    # removed: handled by the manager    utils.ensure_json_file_exists(Config.TX_STORE_FILE)
     # utils.ensure_json_file_exists(Config.X509_KEYPAIR_STORE_FILE, initial_content={}) # (Da dies ein Dict ist)
 
 
