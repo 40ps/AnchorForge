@@ -1,5 +1,6 @@
 # anchorforge/config.py
 import os
+import sys
 from pathlib import Path  # <--- Modern path handling
 from typing import Optional
 from dotenv import load_dotenv
@@ -15,9 +16,11 @@ class Config:
     # Determine the path of this file (anchorforge/config.py)
     # and go up two levels to find the project root.
     BASE_DIR = Path(__file__).resolve().parent.parent
-    
+
+    LOCAL_CONFIG_DIR = BASE_DIR / "local_config"
+
     # Path to .env (flexible location)
-    ENV_PATH = BASE_DIR / "local_config" / ".env"
+    ENV_PATH = LOCAL_CONFIG_DIR / ".env"
     
     # 1. Path for outputs (Logs, JSONs)
     OUTPUT_DIR = BASE_DIR / "output"
@@ -44,6 +47,10 @@ class Config:
     os.makedirs(RUNTIME_DIR, exist_ok=True)
 
     
+    if not LOCAL_CONFIG_DIR.exists():
+        print(f"{LOCAL_CONFIG_DIR} is missing.")
+        sys.exit(1)
+
     # Load .env
     # Safety check if file exists
     if ENV_PATH.exists():
