@@ -12,6 +12,7 @@ from typing import Dict, Any
 from datetime import datetime, timezone
 import logging
 import os
+import time
 import portalocker
 from portalocker import LOCK_EX
 
@@ -45,13 +46,15 @@ def _get_filename_for_address(
     """
 
     # 1. Determine Prefix and Directory based on type
-    if file_type == "utxo":
+    ft = file_type.lower()
+
+    if ft in ["utxo", "utxo_store"]:
         prefix = "utxo_store"
         target_dir = Config.CACHE_DIR
-    elif file_type == "used":
+    elif ft in  ["used", "used_utxo", "used_utxo_store"]:
         prefix = "used_utxo_store"
         target_dir = Config.CACHE_DIR
-    elif file_type == "tx":
+    elif ft in ["tx", "tx_store"]:
         prefix = "tx_store"
         target_dir = Config.DATABASE_DIR
     else:
@@ -63,7 +66,7 @@ def _get_filename_for_address(
     # 2. Build Filename
     # Format: prefix_network_shortAddr.json
     short_address = f"{address[:4]}{address[-4:]}"
-    base_name = f"utxo_store_{network_name}_{short_address}"
+    base_name = f"{prefix}_{network_name}_{short_address}"
     
     # Add '.sim.json' suffix for simulation runs, otherwise '.json'
     suffix = ".sim.json" if simulation else ".json"
@@ -89,11 +92,13 @@ def _ensure_store_exists(file_path: str, store_type: str):
     print(f"File not found, creating empty store: {file_path}")
     
     # Define structure based on explicit type, not filename pattern
-    if store_type == "used":
+
+    st = store_type.lower()
+    if st == "used" or st == "used_utxo":
         initial_data = {"address": "", "network": "", "used_utxos": []}
-    elif store_type == "utxo":
+    elif st == "utxo":
         initial_data = {"address": "", "network": "", "utxos": []}
-    elif store_type == "tx":
+    elif st == "tx":
         initial_data = {"address": "", "network": "", "transactions": []}
     else:
         # Fallback
@@ -105,6 +110,9 @@ def _ensure_store_exists(file_path: str, store_type: str):
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(initial_data, f, indent=4)
+        logger.info(f"Initialized {store_type} store at {file_path}")
+        #  give OS filesystem a moment to settle (important for cloud sync drives like Google Drives)
+        time.sleep(0.5)
     except Exception as e:
         logger.error(f"Failed to create store file {file_path}: {e}")
 
@@ -177,7 +185,7 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
     # Derive dynamic file paths based on the address and network
     utxo_file_path      = _get_filename_for_address(str(sender_address), network_name, file_type="utxo")
     tx_file_path        = _get_filename_for_address(str(sender_address), network_name, file_type="tx")
-    used_utxo_file_path = _get_filename_for_address(str(sender_address), network_name, file_type="used_utxo")
+    used_utxo_file_path = _get_filename_for_address(str(sender_address), network_name, file_type="used")
 
     print(f"Initializing stores for address: {sender_address}")
     print(f"  Using UTXO store file: {utxo_file_path}")
@@ -212,7 +220,7 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
     # --- Lock, Load, Process, and Save with the correct "r+" mode ---
     # 1. Lock tx_store
     # Initialize empty tx_store if it doesn't exist
-    with portalocker.Lock(tx_file_path, "r+", flags=LOCK_EX, timeout=5) as f:
+    with portalocker.Lock(tx_file_path, "r+", flags=LOCK_EX, timeout=30) as f:
         tx_store = load_tx_store(f)
         if not tx_store.get("address") or tx_store["address"] != str(sender_address) or tx_store["network"] != network_name:
             print(f"TX store being initialized/reset for address {sender_address}.")
