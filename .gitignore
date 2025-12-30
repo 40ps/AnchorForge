@@ -33,6 +33,8 @@ runtime/.keep
 
 backup/*
 Legacy/*
+Legacy/main.py
+
 genesis_info/*
 old_logs/*
 audit_log_main/*
@@ -42,7 +44,7 @@ audit_log_main/*
 
 *.ps1
 *.pyc
-
+Remarks-bsv-sdk.txt
 
 *.egg-info/
 .idea/  # für PyCharm
