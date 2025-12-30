@@ -15,7 +15,7 @@ from bsv import PrivateKey, Network
 from anchorforge.config import Config
 
 
-# REQ: Config.KEYPAIR_STORE_FILE = "../config/locakey_pairs.json" # see Config.
+# REQ: Config.KEYPAIR_STORE_FILE = "../config/local_config/key_pairs.json" # see Config.
 
 
 def load_key_store(file_path: str) -> Dict:
@@ -67,7 +67,7 @@ def generate_key_pair(
         raise ValueError("Invalid network_type. Use 'test' or 'main'.")
 
     # Generate a new private key and derive the public address
-    new_private_key = PrivateKey()
+    new_private_key = PrivateKey(network=network)
     new_private_key_wif = new_private_key.wif()
     new_public_address = new_private_key.address(network=network)
     
@@ -166,24 +166,44 @@ def gen_specific_keys():
     )
 
 
-  '''
+    '''
+    
     generate_key_pair(
-        network_type='main',
-        label='M-bank_account',
-        comment='Bankaccount to maintain funds for spending in audits'
+        network_type='test',
+        label='T-bank_account-J',
+        comment='Bankaccount to maintain funds for spending in audits (Linux J)'
     )
 
     generate_key_pair(
-        network_type='main',
-        label='M-utxo_account',
-        comment='audit trail receipts'
+        network_type='test',
+        label='T-utxo_account-J',
+        comment='audit trail receipts (Linux-J)'
     )
   
     generate_key_pair(
-        network_type='main',
-        label='M-signing_key',
-        comment='Signing key to demo for signing the hash'
+        network_type='test',
+        label='T-signing_key-J',
+        comment='Signing key to demo for signing the hash (Linux-J)'
     )
+    
+    generate_key_pair(
+        network_type='test',
+        label='T-Funding_key-J1',
+        comment='Funding (Linux-J)'
+    )
+
+    generate_key_pair(
+        network_type='test',
+        label='T-Funding_key-J2',
+        comment='Funding (Linux-J)'
+    )
+
+    generate_key_pair(
+        network_type='test',
+        label='T-Funding_key-J3',
+        comment='Funding (Linux-J)'
+    )
+
 
 # Example of how to use this function
 if __name__ == "__main__":
@@ -196,8 +216,11 @@ if __name__ == "__main__":
     '''
    
 
+    gen_specific_keys()
+
+
     # Retrieve the private key of the generated key pair using its label
-    label = 'T-bank_account'
+    label = 'T-bank_account-J'
     private_key_wif = get_private_key_by_label(label)
     if private_key_wif:
         print(f"\nRetrieved private key (WIF) for '{label}': {private_key_wif}")
