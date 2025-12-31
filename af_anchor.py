@@ -87,7 +87,7 @@ async def main():
 
     # Dependencies
     utils.ensure_json_file_exists(Config.AUDIT_LOG_FILE)
-    utils.ensure_json_file_exists(Config.TX_STORE_FILE)
+    # intentionally removed: utils.ensure_json_file_exists(Config.TX_STORE_FILE)
 
     mode = "embedded" if args.data else "by_reference"
     logging.info(f"Received data (mode: {mode})")
@@ -98,7 +98,7 @@ async def main():
 
     # Ensure log files exist before locking with "r+"
     utils.ensure_json_file_exists(Config.AUDIT_LOG_FILE)
-    utils.ensure_json_file_exists(Config.TX_STORE_FILE)
+    # Removed: utils.ensure_json_file_exists(Config.TX_STORE_FILE)
     # utils.ensure_json_file_exists(Config.X509_KEYPAIR_STORE_FILE, initial_content={})
 
     await manager.log_audit_event(
