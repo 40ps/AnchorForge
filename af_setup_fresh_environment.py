@@ -59,8 +59,9 @@ async def main():
 
     # 3. Load UTXOs from Blockchain (Full Repair)
     # We call the manager as a subprocess to simulate CLI arguments easily
+    # UPDATED: Use the new root-level af_utxo_manager.py
     print("\n3. Loading UTXOs from Blockchain (Full Repair)...")
-    cmd = f"python utxo_manager.py --address {address} --network {Config.ACTIVE_NETWORK_NAME} full-repair"
+    cmd = f"python af_utxo_manager.py --address {address} --network {Config.ACTIVE_NETWORK_NAME} full-repair"
     os.system(cmd)
 
     # 4. Header Sync
