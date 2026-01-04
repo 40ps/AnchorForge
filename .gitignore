@@ -58,25 +58,14 @@ Thumbs.db  # Windows-Dateien
 key_pairs.json # Secure it!
 
 
-AnchorForge/test_suite.py
-AnchorForge/logs
-AnchorForge/*.log
-AnchorForge/*.json
-AnchorForge/*.json*
-AnchorForge/__pycache__/
-AnchorForge/*.pyc
-AnchorForge/*.pyo
-AnchorForge/venv/
-AnchorForge/dist/
-AnchorForge/build/
-AnchorForge/*.egg-info/
-AnchorForge/.idea/  # für PyCharm
-AnchorForge/.vscode/  # für VS Code
-AnchorForge/.DS_Store  # macOS-Dateien
-AnchorForge/Thumbs.db  # Windows-Dateien
-AnchorForge/.env
-AnchorForge/.flaskenv
-AnchorForge/key_pairs.json # Secure it!
+*.egg-info/
+.idea/  # für PyCharm
+.vscode/  # für VS Code
+.DS_Store  # macOS-Dateien
+Thumbs.db  # Windows-Dateien
+.env
+.flaskenv
+key_pairs.json # Secure it!
 Doc/*
 Doc
 BU/
