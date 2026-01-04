@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anchorforge"
+version = "0.0.1"
+description = "AnchorForge – BSV transaction tooling and publishing framework"
+readme = "README.md"
+requires-python = ">=3.10"
+
+authors = [
+  { name = "Wolfgang Lohmann", email = "you@example.com" }
+]
+
+license = { text = "MIT" }
+
+dependencies = [
+  "aiohttp==3.12.12",
+  "python-dotenv==1.1.1",
+  "bsv-sdk==1.0.8",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "black>=24.0",
+  "ruff>=0.3",
+  "mypy>=1.8",
+]
+
+[tool.setuptools]
+packages = ["anchorforge"]
+
+[tool.setuptools.package-dir]
+"" = "."
+
+[tool.setuptools.exclude-package-data]
+anchorforge = ["__pycache__/*"]
+
+# ------------------------------------------------------------
+# Tooling configuration (optional but recommended)
+# ------------------------------------------------------------
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
