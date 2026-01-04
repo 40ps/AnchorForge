@@ -27,6 +27,8 @@ from anchorforge.config import Config
 from anchorforge import utils
 from anchorforge import manager
 
+import anchorforge
+
 if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
     log_dir = os.path.dirname(Config.LOG_FILE)
     if log_dir and not os.path.exists(log_dir):
@@ -41,6 +43,8 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+print(f"AnchorForge {anchorforge.__version__} (network={Config.ACTIVE_NETWORK_NAME})")
 
 logger = logging.getLogger(__name__)
 
