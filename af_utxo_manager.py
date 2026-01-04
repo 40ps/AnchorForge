@@ -313,7 +313,13 @@ async def do_stats(args: argparse.Namespace, filenames: Dict[str, str]):
     avg_sats = total_sats / count
     sat_values.sort()
     median_sats = sat_values[count // 2]
-    dust_limit = 546
+
+    dust_limit = 546 # Bind it with old BTC value for memory ;-)
+    if Config.ACTIVE_NETWORK_NAME == "test":
+        dust_limit = Config.MINIMUM_UTXO_VALUE_TESTNET
+    else:
+        dust_limit = Config.MINIMUM_UTXO_VALUE
+
     dust_count = sum(1 for s in sat_values if s <= dust_limit)
     dust_percent = (dust_count / count * 100) if count > 0 else 0
 

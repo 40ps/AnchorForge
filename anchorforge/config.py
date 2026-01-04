@@ -134,6 +134,8 @@ class Config:
     LEGACY_PROOF = False
 
     # --- Control Behavior ---
+    MINIMUM_UTXO_VALUE = 10
+    MINIMUM_UTXO_VALUE_TESTNET = 10
     FEE_STRATEGY = int(os.getenv("FEE_STRATEGY", 30))
     LOGGING_UTXO_THRESHOLD = int(os.getenv("LOGGING_UTXO_THRESHOLD", 31))
     MONITOR_POLLING_INTERVAL = int(os.getenv("MONITOR_POLLING_INTERVAL", 30))

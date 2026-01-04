@@ -236,8 +236,14 @@ async def _fetch_inputs_for_amount(
     Returns: (inputs, total_input_satoshis, consumed_utxo_details)
     """
 
-    MINIMUM_UTXO_VALUE = 546
-    available_utxos = [utxo for utxo in current_utxo_store_data["utxos"] if not utxo["used"] and utxo["satoshis"] >= MINIMUM_UTXO_VALUE]
+    min_utxo_value = 546 # legacy
+
+    if Config.ACTIVE_NETWORK_NAME == "test":
+        min_utxo_value = Config.MINIMUM_UTXO_VALUE_TESTNET
+    else:
+        min_utxo_value = Config.MINIMUM_UTXO_VALUE
+    
+    available_utxos = [utxo for utxo in current_utxo_store_data["utxos"] if not utxo["used"] and utxo["satoshis"] >= min_utxo_value]
         
     if not available_utxos:
         # TODO <recipient address>
@@ -437,7 +443,13 @@ async def create_op_return_transaction(
         logger.warning(f"Warning: Calculated change output ({change_output_sats} satoshis) is too low. It might be discarded by miners or not be a valid UTXO.")
 
 
-    if 0 < change_output_sats < 546: # 546 is the default dust limit for P2PKH
+    min_utxo_val = 546 # (is the default dust limit in BTC)
+    if Config.ACTIVE_NETWORK_NAME == "test":
+        min_utxo_val = Config.MINIMUM_UTXO_VALUE_TESTNET
+    else:
+        min_utxo_val = Config.MINIMUM_UTXO_VALUE
+
+    if 0 < change_output_sats < min_utxo_val: 
         logger.error(f"DUST ERROR: The calculated change ({change_output_sats} satoshis) is below the dust limit. Aborting transaction.")
         return None, None, None, [], [], None
 
@@ -467,9 +479,9 @@ async def create_op_return_transaction(
         logger.info(f"Input Satoshis: {total_input_sats}")
         logger.info(f"Change Output: {change_sats} satoshis")
         
-        # Prüfen auf Dust-Limit
-        if change_sats > 0 and change_sats < 546:
-             logger.warning("DUST LIMIT WARNING: Change output is below the typical dust threshold of 546 satoshis.")
+        # check Dust-Limit
+        if change_sats > 0 and change_sats < min_utxo_val:
+             logger.warning(f"DUST LIMIT WARNING: Change output is below the typical dust threshold of {min_utxo_val} satoshis.")
         else:
              logger.info("Change output appears to be safely above the dust limit.")
              
