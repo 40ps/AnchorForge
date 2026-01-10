@@ -110,9 +110,56 @@ def verify_merkle_path(txid: str, index: int, nodes: List[str], target: str) -> 
         return False
 # endregion
 
+#region new [OP_FALSE] OP_RETURN test
+def print_op_return_scriptpubkey (script: Script):
+    """
+    Prints a human-readable form of the OP_RETURN scriptPubKey.
+    Handles legacy (OP_RETURN) and new (OP_FALSE OP_RETURN) formats.
+    """
+    logger.info("\n--- OP_RETURN ScriptPubkey Details ---")
+    
+    if script is None or not hasattr(script, 'chunks') or not script.chunks:
+        logger.error("Error: Invalid script object.")
+        return
+
+    first_chunk_op = script.chunks[0].op
+    start_index = 0
+
+    # #FIX: Added detection for Safe OP_RETURN (0x00 0x6a) to avoid false warnings
+    if first_chunk_op == 0x00:
+        if len(script.chunks) > 1 and script.chunks[1].op == 0x6a:
+            logger.info("Detected 'Safe' OP_RETURN (OP_FALSE OP_RETURN).")
+            start_index = 2
+        else:
+            logger.warning("Starts with OP_FALSE but not followed by OP_RETURN.")
+            return
+    elif first_chunk_op == 0x6a:
+        logger.info("Detected Legacy OP_RETURN.")
+        start_index = 1
+    else:
+        logger.warning(f"Script does not start with OP_RETURN (0x6a) or OP_FALSE (0x00). Opcode: {first_chunk_op}")
+        return
+
+    logger.info(f"Full Script (ASM): {script.to_asm()}")
+    logger.info(f"Full Script (Hex): {script.hex()}")
+
+    logger.info("OP_RETURN Data Elements:")
+    for i, chunk in enumerate(script.chunks[start_index:]):
+        if chunk.data is not None: 
+            try:
+                decoded_data = chunk.data.decode('utf-8')
+                logger.info(f"  Element {i+1}: (Text) '{decoded_data}' (Hex: {chunk.data.hex()})")
+            except UnicodeDecodeError:
+                logger.info(f"  Element {i+1}: (Raw Hex) {chunk.data.hex()} (Length: {len(chunk.data)} bytes)")
+        else:
+             # Just print opcode if it's not data
+             logger.info(f"  Element {i+1}: (Opcode) {chunk.op}")
+# endregion new [OP_FALSE] OP_RETURN test
+
+
 
 # region Utility / Debugging - still buggy
-def print_op_return_scriptpubkey (script: Script):   #_bu251015  # TODO contains an error
+def print_op_return_scriptpubkey_buggy (script: Script):   #_bu251015  # TODO contains an error
     """
     Prints a human-readable form of the OP_RETURN scriptPubKey.
     It iterates through the script chunks to identify and display
@@ -135,6 +182,7 @@ def print_op_return_scriptpubkey (script: Script):   #_bu251015  # TODO contains
 
     first_chunk_op_raw = script.chunks[0].op
     
+    #region buggy OP_RETURN
     if isinstance(first_chunk_op_raw, bytes):
         if len(first_chunk_op_raw) == 1:
             first_chunk_op_int = first_chunk_op_raw[0]
@@ -153,6 +201,9 @@ def print_op_return_scriptpubkey (script: Script):   #_bu251015  # TODO contains
     if first_chunk_op_int != 0x6a: # 0x6a is OP_RETURN, now comparing with an int
         logger.warning("This is not an OP_RETURN script. First opcode is not OP_RETURN.")
         return
+
+    # endregion -----------------
+
 
     logger.info(f"Full Script (ASM): {script.to_asm()}")
     logger.info(f"Full Script (Hex): {script.hex()}")
