@@ -93,6 +93,8 @@ async def main_monitor(duration_minutes: int | None):
     logging.info("\n--- Audit Monitor has been stopped. ---")
 
 if __name__ == "__main__":
+    Config.validate_wallet_config()
+    
     parser = argparse.ArgumentParser(description="Run the Audit Monitor.")
     parser.add_argument(
         '-d', '--duration', 

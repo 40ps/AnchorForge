@@ -52,6 +52,7 @@ VIBECODEVERSION=0.5 # Version updated
 
 #AUDIT_RECORD_FORMAT_STRING = "TX, OP_RETURN format: [mode:byte, [( (hash:bytes, signature:bytes, [pubkey:bytes|certificate:bytes])|(note:bytes) ]+"
 
+Config.validate_wallet_config()
 
 async def main():
     """
@@ -59,6 +60,9 @@ async def main():
     Main entry point. Parses arguments and passes them to the worker function.
     Now supports mutually exclusive --data and --file arguments.
     """
+    Config.validate_wallet_config()
+
+    
     parser = argparse.ArgumentParser(
         description="AnchorForge v0.1: Log a single audit event.",
         formatter_class=argparse.RawTextHelpFormatter

@@ -48,19 +48,22 @@ def _get_filename_for_address(
     # 1. Determine Prefix and Directory based on type
     ft = file_type.lower()
 
+    # Using getattr ensures it works even if config.py hasn't been reloaded/updated yet (fallback to CACHE_DIR).
+    wallet_dir = getattr(Config, 'WALLET_CACHE_DIR', Config.CACHE_DIR)
+
     if ft in ["utxo", "utxo_store"]:
         prefix = "utxo_store"
-        target_dir = Config.CACHE_DIR
+        target_dir = wallet_dir
     elif ft in  ["used", "used_utxo", "used_utxo_store"]:
         prefix = "used_utxo_store"
-        target_dir = Config.CACHE_DIR
+        target_dir = wallet_dir
     elif ft in ["tx", "tx_store"]:
         prefix = "tx_store"
         target_dir = Config.DATABASE_DIR
     else:
         # Fallback for custom types, defaults to CACHE
         prefix = f"{file_type}_store"
-        target_dir = Config.CACHE_DIR
+        target_dir = wallet_dir
         logger.warning(f"Unknown file_type '{file_type}'. Defaulting to CACHE directory with prefix '{prefix}'.")
 
     # 2. Build Filename
@@ -89,7 +92,7 @@ def _ensure_store_exists(file_path: str, store_type: str):
     if os.path.exists(file_path):
         return
 
-    print(f"File not found, creating empty store: {file_path}")
+    logger.info("File not found, creating empty store: {file_path}")
     
     # Define structure based on explicit type, not filename pattern
 
@@ -187,8 +190,8 @@ async def initialize_utxo_store(private_key_wif: str, network_name: str):
     tx_file_path        = _get_filename_for_address(str(sender_address), network_name, file_type="tx")
     used_utxo_file_path = _get_filename_for_address(str(sender_address), network_name, file_type="used")
 
-    print(f"Initializing stores for address: {sender_address}")
-    print(f"  Using UTXO store file: {utxo_file_path}")
+    logger.info("Initializing stores for address: {sender_address}")
+    logger.info("  Using UTXO store file: {utxo_file_path}")
 
 
     # --- Robust File Handling: Ensure files exist before locking with "r+" ---

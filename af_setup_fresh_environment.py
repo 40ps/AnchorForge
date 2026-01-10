@@ -14,7 +14,15 @@ async def main():
     print("--- Initializing Environment for New Machine ---")
     
     # 1. Config triggers directory creation
-    print(f"1. Directories checked: {Config.DATABASE_DIR}, {Config.CACHE_DIR}")
+    # Check for new V2.1 structure attributes, fallback if Config isn't updated yet
+    db_dir = getattr(Config, 'DATABASE_DIR', 'database')
+    wallet_dir = getattr(Config, 'WALLET_CACHE_DIR', getattr(Config, 'CACHE_DIR', 'cache'))
+    public_dir = getattr(Config, 'PUBLIC_CACHE_DIR', 'cache/public')
+
+    print(f"1. Directories checked:")
+    print(f"   - Database: {db_dir}")
+    print(f"   - Wallet Cache: {wallet_dir}")
+    print(f"   - Public Cache: {public_dir}")
 
     # --- DECISION: Use existing keys or generate new ones? ---
     print("\n--- Wallet Configuration ---")
@@ -28,21 +36,14 @@ async def main():
         print("it may lead to 'Double Spend' errors.")
         print("For independent development, a unique key per machine is recommended.")
         
-        # Optional prompt (commented out to allow non-interactive runs, but important note)
+        # Optional prompt
         # response = input("Do you want to keep this key? (y/n): ")
-        # if response.lower() == 'n':
-        #     # Logic to generate new keys and update .env could be added here
-        #     pass
 
     else:
         print("No key found in .env. Generating new keys...")
-        # Example call for Key-Gen (must be manually added to .env)
         try:
-            # Use platform.node() for cross-platform compatibility (Windows/Linux/macOS)
-            # This avoids the "os.uname" error on Windows
             hostname = platform.node()
-            if not hostname:
-                hostname = "dev_machine"
+            if not hostname: hostname = "dev_machine"
         except Exception:
             hostname = "dev_machine"
 
@@ -58,11 +59,21 @@ async def main():
         return # Abort so user can edit .env
 
     # 3. Load UTXOs from Blockchain (Full Repair)
-    # We call the manager as a subprocess to simulate CLI arguments easily
-    # UPDATED: Use the new root-level af_utxo_manager.py
+    # Uses the new af_utxo_manager.py tool (assumed to be in root)
     print("\n3. Loading UTXOs from Blockchain (Full Repair)...")
-    cmd = f"python af_utxo_manager.py --address {address} --network {Config.ACTIVE_NETWORK_NAME} full-repair"
-    os.system(cmd)
+    
+    # Check if we should use the new CLI tool name or fallback to library path
+    manager_script = "af_utxo_manager.py"
+    if not os.path.exists(manager_script):
+        # Fallback to internal path if CLI wrapper missing
+        manager_script = os.path.join("anchorforge", "utxo_manager.py")
+        
+    if os.path.exists(manager_script):
+        cmd = f"python {manager_script} --address {address} --network {Config.ACTIVE_NETWORK_NAME} full-repair"
+        print(f"Executing: {cmd}")
+        os.system(cmd)
+    else:
+        print(f"⚠️ Warning: UTXO Manager script not found at {manager_script}. Skipping initial sync.")
 
     # 4. Header Sync
     print("\n4. Synchronizing Block Headers...")

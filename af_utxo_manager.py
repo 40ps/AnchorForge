@@ -832,6 +832,8 @@ async def main():
     Main entry point for the UTXO Manager.
     """
     setup_logging()
+
+    Config.validate_wallet_config()
     
     parser = argparse.ArgumentParser(
         description=f"AnchorForge UTXO Manager (Version {VERSION}). Manages and repairs UTXO cache files.",

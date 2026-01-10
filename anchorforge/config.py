@@ -1,7 +1,7 @@
 # anchorforge/config.py
 import os
 import sys
-from pathlib import Path  # <--- Modern path handling
+from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 from bsv import Network
@@ -9,54 +9,47 @@ from bsv import Network
 class Config:
     """
     Central Configuration.
-    Uses pathlib to find paths relative to THIS file, not the current working directory.
+    Manages paths, network settings, and secrets.
     """
     
     # --- PATH SETUP ---
-    # Determine the path of this file (anchorforge/config.py)
-    # and go up two levels to find the project root.
     BASE_DIR = Path(__file__).resolve().parent.parent
-
     LOCAL_CONFIG_DIR = BASE_DIR / "local_config"
-
-    # Path to .env (flexible location)
     ENV_PATH = LOCAL_CONFIG_DIR / ".env"
     
-    # 1. Path for outputs (Logs, JSONs)
+    # --- NEW DIRECTORY STRUCTURE ---
+    
+    # 1. OUTPUT: Logs & Reports
     OUTPUT_DIR = BASE_DIR / "output"
 
-    # 2. DATABASE_DIR: Permanent History (TXs, Headers) - CRITICAL FOR PROOFS!
-    # These files are part of the evidence chain and should be backed up.
+    # 2. DATABASE: Permanent History (TXs) - Private & Critical
     DATABASE_DIR = BASE_DIR / "database"
 
-    # 3. CACHE_DIR: Wallet State (UTXOs) - Operational Data
-    # These represent current money/state. Can be rebuilt/rescanned if lost.
-    CACHE_DIR = BASE_DIR / "cache"
+    # 3. WALLET CACHE: UTXOs - Private & Reconstructible
+    # "My State": Should not be shared publicly.
+    WALLET_CACHE_DIR = BASE_DIR / "cache" / "wallet"
 
+    # 4. PUBLIC CACHE: Block Headers - Public & Shared
+    # "Global State": Can be distributed with the Verifier.
+    PUBLIC_CACHE_DIR = BASE_DIR / "cache" / "public"
 
-    # 4. RUNTIME_DIR: Process Control (Flags, PIDs) - Volatile
-    # Can be cleared on restart without data loss.
+    # 5. RUNTIME: Process Control (Flags, PIDs)
     RUNTIME_DIR = BASE_DIR / "runtime"
 
-    # IMPORTANT: Create directory immediately if missing.
-    # Since we are in the class body, this runs once at startup.
-    # Create directories immediately
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.makedirs(DATABASE_DIR, exist_ok=True)
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    os.makedirs(RUNTIME_DIR, exist_ok=True)
-
+    # Create all directories immediately
+    for d in [OUTPUT_DIR, DATABASE_DIR, WALLET_CACHE_DIR, PUBLIC_CACHE_DIR, RUNTIME_DIR]:
+        os.makedirs(d, exist_ok=True)
     
     if not LOCAL_CONFIG_DIR.exists():
-        print(f"{LOCAL_CONFIG_DIR} is missing.")
-        sys.exit(1)
+        # Fallback/Warning if config dir is missing (e.g. fresh clone)
+        print(f"Hinweis: {LOCAL_CONFIG_DIR} existiert nicht. Nutze Standardwerte/Env-Vars.")
 
     # Load .env
-    # Safety check if file exists
     if ENV_PATH.exists():
         load_dotenv(ENV_PATH)
     else:
-        print(f"WARNING: .env not found at {ENV_PATH}")
+        # Not critical for Verifier mode, so just print warning
+        pass 
 
     # --- Protocol Identifier ---
     ANCHOR_FORGE_ID = "AnchorForge v0.1"
@@ -72,15 +65,24 @@ class Config:
     else:
         raise ValueError(f"Invalid NETWORK '{ACTIVE_NETWORK_NAME}' specified. Use 'test' or 'main'.")
 
+    # API is needed for both Verifier and Anchor
     WOC_API_BASE_URL: Optional[str] = os.getenv(f"{NETWORK_PREFIX}WOC_API_BASE_URL")
-    assert WOC_API_BASE_URL is not None, "WOC_API_BASE_URL missing"
+    if not WOC_API_BASE_URL:
+        # Fallback defaults if .env is missing (useful for quick start verifiers)
+        if ACTIVE_NETWORK_NAME == "main":
+             WOC_API_BASE_URL = "https://api.whatsonchain.com/v1/bsv/main"
+        else:
+             WOC_API_BASE_URL = "https://api.whatsonchain.com/v1/bsv/test"
 
+    
     NETWORK_API_ENDPOINTS = {
         "main": "https://api.whatsonchain.com/v1/bsv/main",
         "test": "https://api.whatsonchain.com/v1/bsv/test"
     }
 
-    # --- Secrets ---
+    
+    # --- Secrets (Lazy Loading) ---
+    # We explicitly allow these to be None so the Verifier doesn't crash.
     PRIVATE_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}PRIVATE_KEY_WIF")
     UTXO_STORE_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}UTXO_STORE_KEY_WIF")
     PRIVATE_SIGNING_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}PRIVATE_SIGNING_KEY_WIF")
@@ -88,43 +90,31 @@ class Config:
     BANK_ADDRESS: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}BANK_ADDRESS")
     
     KEYPAIR_STORE_FILE: Optional[str] = os.getenv("KEYPAIR_STORE_FILE")
-    
-    # Path correction for Keypair Store (if relative)
     X509_KEYPAIR_STORE_FILE : Optional[str] = os.getenv("X509_KEYPAIR_STORE_FILE")
-    if X509_KEYPAIR_STORE_FILE and not os.path.isabs(X509_KEYPAIR_STORE_FILE):
-         # If it is e.g. "../local_config/keys.json", handle resolution here if needed.
-         # Be careful how it is set in .env.
-         pass 
 
     ANCHOR_CERT_LABEL = "anchor_example_certificate"
 
-    # Assertions (shortened for clarity)
-    assert PRIVATE_KEY_WIF is not None
-    
-    # --- File Paths (CLEANLY IN OUTPUT/DB/CACHE DIR) ---
-    # Using direct pathlib operators (OUTPUT_DIR / "file").
-    # str(...) converts the Path object to a string at the end, 
-    # so the rest of the code (expecting strings) doesn't crash.
-    
-    # A. CACHE (Operational Wallet State)
-    UTXO_STORE_FILE = str(CACHE_DIR / f"utxo_store_{ACTIVE_NETWORK_NAME}.json")
-    USED_UTXO_STORE_FILE = str(CACHE_DIR / f"used_utxo_store_{ACTIVE_NETWORK_NAME}.json")
+    # --- File Paths ---
 
-    # B. DATABASE (Permanent History / Proof Data)
+    # A. WALLET CACHE (Private)
+    # Used by wallet_manager. Points to the private cache subdir.
+    # Note: wallet_manager usually builds filenames dynamically, but uses this dir as base.
+    CACHE_DIR = WALLET_CACHE_DIR # Alias for compatibility with existing wallet_manager
+    
+    UTXO_STORE_FILE = str(WALLET_CACHE_DIR / f"utxo_store_{ACTIVE_NETWORK_NAME}.json")
+    USED_UTXO_STORE_FILE = str(WALLET_CACHE_DIR / f"used_utxo_store_{ACTIVE_NETWORK_NAME}.json")
+
+    # B. PUBLIC CACHE (Public)
+    # Block Headers reside here now.
+    BLOCK_HEADERS_FILE = str(PUBLIC_CACHE_DIR / f"block_headers_{ACTIVE_NETWORK_NAME}.json")
+
+    # C. DATABASE (Private History)
     TX_STORE_FILE = str(DATABASE_DIR / f"tx_store_{ACTIVE_NETWORK_NAME}.json")
-    BLOCK_HEADERS_FILE = str(DATABASE_DIR / f"block_headers_{ACTIVE_NETWORK_NAME}.json")
 
-    # C. OUTPUT (Logs & Reports)
+    # D. OUTPUT (Logs & Reports)
     LOG_FILE = str(OUTPUT_DIR / f"application_{ACTIVE_NETWORK_NAME}.log")
-    
-    # Audit Log is a report/export, so it fits in Output. 
-    # (Unless you treat it as a database, then move to DATABASE_DIR)
     AUDIT_LOG_FILE = str(OUTPUT_DIR / f"audit_log_{ACTIVE_NETWORK_NAME}.json")
 
-
-
-
- 
     # --- Constants ---
     TSC_PROOF_FIELD = "merkle_proof_tsc_data"
     TSC_TIMESTAMP_FIELD = "tsc_proof_added_utc"
@@ -136,6 +126,7 @@ class Config:
     # --- Control Behavior ---
     MINIMUM_UTXO_VALUE = 10
     MINIMUM_UTXO_VALUE_TESTNET = 10
+    
     FEE_STRATEGY = int(os.getenv("FEE_STRATEGY", 30))
     LOGGING_UTXO_THRESHOLD = int(os.getenv("LOGGING_UTXO_THRESHOLD", 31))
     MONITOR_POLLING_INTERVAL = int(os.getenv("MONITOR_POLLING_INTERVAL", 30))
@@ -148,12 +139,23 @@ class Config:
     TIMEOUT_CONNECT = 10.0
     AUDIT_INCLUDING_FILES = True
     
-    # Check secrets
-    if not all([PRIVATE_KEY_WIF, UTXO_STORE_KEY_WIF, PRIVATE_BANK_KEY_WIF, PRIVATE_SIGNING_KEY_WIF]):
-        raise ValueError("Critical keys missing in .env")
-
-    BACKUP_DIR = "backup" # TODO Consider moving this to OUTPUT_DIR/backup too
+    BACKUP_DIR = "backup"
     BACKUP_INTERVAL = 500
     COINGECKO_API_MONTHLY_LIMIT = 10000
     VERBOSE = True 
     SHOW_RAW_TX = False
+
+    @classmethod
+    def validate_wallet_config(cls):
+        """
+        Explicitly check if wallet keys are present.
+        Call this method from scripts that REQUIRE a wallet (Anchor, Monitor).
+        Do NOT call this from scripts that are read-only (Verifier, Sync).
+        """
+        missing = []
+        if not cls.PRIVATE_KEY_WIF: missing.append("PRIVATE_KEY_WIF")
+        if not cls.UTXO_STORE_KEY_WIF: missing.append("UTXO_STORE_KEY_WIF")
+        
+        if missing:
+            raise ValueError(f"CRITICAL: Missing wallet keys in .env: {', '.join(missing)}. "
+                             f"This script requires a configured wallet.")

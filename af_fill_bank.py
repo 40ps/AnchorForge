@@ -3,6 +3,7 @@ from anchorforge.config import Config
 from anchorforge.sweep_bank import sweep_to_bank
 
 async def main():
+    Config.validate_wallet_config()
     wif = "cXXXX"
 
     min_sats = 546

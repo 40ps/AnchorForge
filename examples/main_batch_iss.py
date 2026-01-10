@@ -81,6 +81,8 @@ STATUS_FILE = os.path.join(RUNTIME_DIR, "iss_batch_status.json")
 
 DELAY_NEXT_ISS_REQUEST = 1 # Not more 1 API Call /s for wheretheiss.at and whatsonchain
 
+Config.validate_wallet_config()
+
 
 async def process_single_iss_location_event(
         dry_run: bool = False, 
@@ -139,6 +141,9 @@ async def process_single_iss_location_event(
 
 # --- main function to control the batch ---
 async def main():
+
+    Config.validate_wallet_config()
+
     parser = argparse.ArgumentParser(
         description="ISS Batch Logger"+
             " \nFetches ISS location from wheretheiss.at in a batch and creates audit records.",

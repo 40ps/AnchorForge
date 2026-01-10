@@ -80,6 +80,9 @@ Genesis Tx 2 (Example): 9bd554b491aeafc64e9693cd69880225aea17f44e39507000378252d
 
 *PoC*: github.com/40ps/AnchorForge"""
 
+
+Config.validate_wallet_config()
+
 async def process_single_coingecko_event(
         dry_run: bool, 
         keyword: str, 
@@ -142,6 +145,10 @@ async def main():
     Main function to control the batch logging process.
     It now includes status tracking, resume capabilities, and periodic backups, and a final summary.
     """
+
+    Config.validate_wallet_config()
+
+    
     parser = argparse.ArgumentParser(
         description="Fetches BSV/EUR price from CoinGecko in a batch and creates audit records."
     )

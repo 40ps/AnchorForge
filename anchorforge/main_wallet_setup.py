@@ -192,9 +192,12 @@ async def setup_wallet_environment():
 
 async def main():
 
-   
+    
     # main_wallet_setup.py --sync
     # main_wallet_setup.py --create-utxolets 1000 2000
+    
+    Config.validate_wallet_config()
+
     parser = argparse.ArgumentParser(description="Manage the wallet environment.")
     parser.add_argument( '--sync',  action='store_true',  help="Synchronize the UTXO store with the blockchain."  )
     parser.add_argument( '--create-utxolets', nargs=2, metavar=('SIZE', 'NUMBER'), type=int, help="Create a number of smaller UTXOs of a specific size.")
