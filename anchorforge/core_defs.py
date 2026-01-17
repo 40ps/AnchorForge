@@ -110,13 +110,117 @@ def verify_merkle_path(txid: str, index: int, nodes: List[str], target: str) -> 
         return False
 # endregion
 
+#region new [OP_FALSE] OP_RETURN
+def print_op_return_scriptpubkey(script: Script):
+    """
+    Prints a human-readable form of the OP_RETURN scriptPubKey.
+    Uses manual byte-parsing (similar to verifier.py) to be robust against
+    library inconsistencies regarding chunks.
+    """
+    logger.info("\n--- OP_RETURN ScriptPubkey Details ---")
+    
+    if script is None:
+        logger.error("Error: Invalid script object.")
+        return
+
+    try:
+        # 1. Get raw bytes
+        # Script.hex() returns string hex, convert to bytes
+        script_bytes = bytes.fromhex(script.hex())
+        logger.info(f"Full Script (Hex): {script.hex()}")
+        try:
+             logger.info(f"Full Script (ASM): {script.to_asm()}")
+        except Exception:
+             logger.warning("Could not generate ASM for this script.")
+
+        # 2. Check Pattern (Byte Level)
+        start_index = -1
+        
+        # Check for Safe OP_RETURN (0x00 0x6a)
+        if script_bytes.startswith(b'\x00\x6a'):
+            logger.info("Detected 'Safe' OP_RETURN (OP_FALSE OP_RETURN).")
+            start_index = 2
+        # Check for Legacy OP_RETURN (0x6a)
+        elif script_bytes.startswith(b'\x6a'):
+            logger.info("Detected Legacy OP_RETURN.")
+            start_index = 1
+        else:
+            # For logging/debug purposes, print the first byte
+            first_byte = script_bytes[0] if len(script_bytes) > 0 else "Empty"
+            logger.warning(f"Script does not start with OP_RETURN (0x6a) or OP_FALSE (0x00). First byte: {hex(first_byte) if isinstance(first_byte, int) else first_byte}")
+            return
+
+        # 3. Manual Chunk Parsing
+        # We parse the rest of the bytes manually to extract data pushes
+        logger.info("OP_RETURN Data Elements:")
+        
+        current_index = start_index
+        element_count = 0
+        
+        while current_index < len(script_bytes):
+            element_count += 1
+            length_or_opcode = script_bytes[current_index]
+            current_index += 1
+            
+            data_length = 0
+            
+            # Determine data length based on opcode
+            if 0x01 <= length_or_opcode <= 0x4b:
+                # Direct Data Push (1-75 bytes)
+                data_length = length_or_opcode
+                
+            elif length_or_opcode == 0x4c: # OP_PUSHDATA1
+                if current_index + 1 > len(script_bytes): break
+                data_length = script_bytes[current_index]
+                current_index += 1
+                
+            elif length_or_opcode == 0x4d: # OP_PUSHDATA2
+                if current_index + 2 > len(script_bytes): break
+                data_length = int.from_bytes(script_bytes[current_index:current_index + 2], byteorder='little')
+                current_index += 2
+                
+            elif length_or_opcode == 0x4e: # OP_PUSHDATA4
+                if current_index + 4 > len(script_bytes): break
+                data_length = int.from_bytes(script_bytes[current_index:current_index + 4], byteorder='little')
+                current_index += 4
+            else:
+                 # It's an opcode, not a data push (e.g. OP_0 inside the data stream? Unlikely for standard OP_RETURN protocols)
+                 logger.info(f"  Element {element_count}: (Opcode) {hex(length_or_opcode)}")
+                 continue
+
+            # Extract Data
+            data_end = current_index + data_length
+            if data_end > len(script_bytes):
+                logger.error("  Error: Data push length exceeds script size.")
+                break
+                
+            chunk_data = script_bytes[current_index:data_end]
+            current_index = data_end
+            
+            # Print Data
+            try:
+                decoded_data = chunk_data.decode('utf-8')
+                logger.info(f"  Element {element_count}: (Text) '{decoded_data}' (Hex: {chunk_data.hex()})")
+            except UnicodeDecodeError:
+                logger.info(f"  Element {element_count}: (Raw Hex) {chunk_data.hex()} (Length: {len(chunk_data)} bytes)")
+
+    except Exception as e:
+        logger.error(f"Exception in print_op_return_scriptpubkey: {e}", exc_info=True)
+#end region
+
+
+
 #region new [OP_FALSE] OP_RETURN test
-def print_op_return_scriptpubkey (script: Script):
+def print_op_return_scriptpubkey_260111 (script: Script):
     """
     Prints a human-readable form of the OP_RETURN scriptPubKey.
     Handles legacy (OP_RETURN) and new (OP_FALSE OP_RETURN) formats.
     """
     logger.info("\n--- OP_RETURN ScriptPubkey Details ---")
+    
+    logger.info(f"Full Script (ASM) 1: {script.to_asm()}")
+    logger.info(f"Full Script (Hex) 1: {script.hex()}")
+
     
     if script is None or not hasattr(script, 'chunks') or not script.chunks:
         logger.error("Error: Invalid script object.")
@@ -157,6 +261,125 @@ def print_op_return_scriptpubkey (script: Script):
 # endregion new [OP_FALSE] OP_RETURN test
 
 
+#region debug 2
+def print_op_return_scriptpubkey_260111_bug (script: Script):
+    """
+    Prints a human-readable form of the OP_RETURN scriptPubKey.
+    Handles legacy (OP_RETURN) and new (OP_FALSE OP_RETURN) formats.
+    """
+    logger.info("\n--- OP_RETURN ScriptPubkey Details ---")
+    
+    if script is None or not hasattr(script, 'chunks') or not script.chunks:
+        logger.error("Error: Invalid script object.")
+        return
+
+    # #FIX: Added detailed debugging to inspect what we actually get
+    # logger.info(f"Full Script (ASM): {script.to_asm()}")
+    # logger.info(f"Full Script (Hex): {script.hex()}")
+
+    try:
+        first_chunk_op = script.chunks[0].op
+        # logger.debug(f"DEBUG: First Chunk Opcode: {first_chunk_op} (Type: {type(first_chunk_op)})")
+        
+        start_index = 0
+
+        # #FIX: Added detection for Safe OP_RETURN (0x00 0x6a)
+        # Note: In some bsv libs, OP_0 might be represented as int 0.
+        if first_chunk_op == 0 or first_chunk_op == 0x00:
+            if len(script.chunks) > 1 and script.chunks[1].op == 0x6a:
+                logger.info("Detected 'Safe' OP_RETURN (OP_FALSE OP_RETURN).")
+                start_index = 2
+            else:
+                logger.warning("Starts with OP_FALSE (0x00) but not followed by OP_RETURN (0x6a).")
+                # Continue anyway to see what's inside
+                start_index = 1
+                
+        elif first_chunk_op == 0x6a:
+            logger.info("Detected Legacy OP_RETURN.")
+            start_index = 1
+        else:
+            logger.warning(f"Script does not start with OP_RETURN (0x6a) or OP_FALSE (0x00). Opcode: {first_chunk_op}")
+            # We assume it might be a weird format and try to parse from index 0 anyway if debug is needed
+            return
+
+        logger.info("OP_RETURN Data Elements:")
+        for i, chunk in enumerate(script.chunks[start_index:]):
+            if chunk.data is not None: 
+                try:
+                    # Attempt UTF-8 decode
+                    decoded_data = chunk.data.decode('utf-8')
+                    # Log printable characters, hex for others
+                    logger.info(f"  Element {i+1}: (Text) '{decoded_data}' (Hex: {chunk.data.hex()})")
+                except UnicodeDecodeError:
+                    logger.info(f"  Element {i+1}: (Raw Hex) {chunk.data.hex()} (Length: {len(chunk.data)} bytes)")
+            else:
+                # Just print opcode if it's not data
+                logger.info(f"  Element {i+1}: (Opcode) {chunk.op}")
+
+    except Exception as e:
+        logger.error(f"Exception in print_op_return_scriptpubkey: {e}", exc_info=True)
+
+#endregion
+
+
+#region debug print_op_return_scriptkey
+def print_op_return_scriptpubkey_1 (script: Script):
+    """
+    Prints a human-readable form of the OP_RETURN scriptPubKey.
+    Handles legacy (OP_RETURN) and new (OP_FALSE OP_RETURN) formats.
+    """
+    logger.info("\n--- OP_RETURN ScriptPubkey Details ---")
+    
+    if script is None or not hasattr(script, 'chunks') or not script.chunks:
+        logger.error("Error: Invalid script object.")
+        return
+
+    # #FIX: Added detailed debugging to inspect what we actually get
+    # logger.info(f"Full Script (ASM): {script.to_asm()}")
+    # logger.info(f"Full Script (Hex): {script.hex()}")
+
+    try:
+        first_chunk_op = script.chunks[0].op
+        # logger.debug(f"DEBUG: First Chunk Opcode: {first_chunk_op} (Type: {type(first_chunk_op)})")
+        
+        start_index = 0
+
+        # #FIX: Added detection for Safe OP_RETURN (0x00 0x6a)
+        # Note: In some bsv libs, OP_0 might be represented as int 0.
+        if first_chunk_op == 0 or first_chunk_op == 0x00:
+            if len(script.chunks) > 1 and script.chunks[1].op == 0x6a:
+                logger.info("Detected 'Safe' OP_RETURN (OP_FALSE OP_RETURN).")
+                start_index = 2
+            else:
+                logger.warning("Starts with OP_FALSE (0x00) but not followed by OP_RETURN (0x6a).")
+                # Continue anyway to see what's inside
+                start_index = 1
+                
+        elif first_chunk_op == 0x6a:
+            logger.info("Detected Legacy OP_RETURN.")
+            start_index = 1
+        else:
+            logger.warning(f"Script does not start with OP_RETURN (0x6a) or OP_FALSE (0x00). Opcode: {first_chunk_op}")
+            # We assume it might be a weird format and try to parse from index 0 anyway if debug is needed
+            return
+
+        logger.info("OP_RETURN Data Elements:")
+        for i, chunk in enumerate(script.chunks[start_index:]):
+            if chunk.data is not None: 
+                try:
+                    # Attempt UTF-8 decode
+                    decoded_data = chunk.data.decode('utf-8')
+                    # Log printable characters, hex for others
+                    logger.info(f"  Element {i+1}: (Text) '{decoded_data}' (Hex: {chunk.data.hex()})")
+                except UnicodeDecodeError:
+                    logger.info(f"  Element {i+1}: (Raw Hex) {chunk.data.hex()} (Length: {len(chunk.data)} bytes)")
+            else:
+                # Just print opcode if it's not data
+                logger.info(f"  Element {i+1}: (Opcode) {chunk.op}")
+
+    except Exception as e:
+        logger.error(f"Exception in print_op_return_scriptpubkey: {e}", exc_info=True)
+# endregion debug print_op_return
 
 # region Utility / Debugging - still buggy
 def print_op_return_scriptpubkey_buggy (script: Script):   #_bu251015  # TODO contains an error
