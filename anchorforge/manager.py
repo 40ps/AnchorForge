@@ -1,8 +1,11 @@
-# audit_service.py
+# manager.py
 '''
 This module acts as the high-level service layer for the AnchorForge application.
 It abstracts away the complexity of file locking, store management, and transaction orchestration,
 providing a simple interface for logging events.
+
+Recent change: 26-01-18 adapted to flexible algorithm selection (payload_options) 
+               (_build_payload, load_audit_event)
 '''
 
 import logging
@@ -10,8 +13,9 @@ import uuid
 import portalocker
 from portalocker import LOCK_EX
 from datetime import datetime, timezone
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import asyncio
+import os
 import json
 
 from bsv import PrivateKey
@@ -64,9 +68,147 @@ async def _prepare_data_and_hash(
 def _build_payloads(
     content_str: str, 
     data_hash: bytes, 
+    mode: str,
+    options: Optional[Dict[str, Any]] = None
+) -> List[bytes]:
+    """
+    Constructs the list of data pushes using the v0.2 Atomic Tag (TLV) format.
+    Instead of nested groups, we push flat [TAG, VALUE] pairs.
+    """
+
+    if options is None: options = {}
+    
+    # Default-all what is configured
+    include_ec = options.get("include_ec", True)
+    include_x509 = options.get("include_x509", True)
+    
+    include_data = options.get("include_data", False)
+    include_ref = options.get("include_reference", False)  # Full path
+    include_baseref = options.get("include_basereference", False) # Filename only
+
+    # 1. App ID & Protocol Version
+    payloads = [core_defs.AUDIT_MODE_APP_ID, Config.ANCHOR_FORGE_ID.encode('utf-8')]
+
+    # 2. HASH (Immer dabei)
+    payloads.append(core_defs.AUDIT_TAG_HASH)
+    algo_byte = bytes([core_defs.HASH_ALGO_SHA256]) 
+    payloads.append(algo_byte + data_hash)
+
+    #region New for on-chain data/reference
+    # --- NEW: OPTIONAL DATA ON CHAIN ---
+    if include_data:
+        try:
+            data_bytes = None
+            
+            # Case A: Embedded -> content_str is the data itself
+            if mode == "embedded":
+                data_bytes = content_str.encode('utf-8')
+                
+            # Case B: By Reference -> content_str is the Path -> read file
+            elif mode == "by_reference":
+                if os.path.exists(content_str):
+                    # Safety Check: Check for size)
+                    
+                    # TODO include into config or core_defs
+                    ONCHAIN_DATA_SIZE_LIMIT = 4096
+                    file_size = os.path.getsize(content_str)
+                    if file_size > ONCHAIN_DATA_SIZE_LIMIT: 
+                        logger.warning(f"  Skipping DATA inclusion: File too large ({file_size} bytes).")
+                    else:
+                        with open(content_str, 'rb') as f:
+                            data_bytes = f.read()
+                else:
+                    logger.warning(f"  Skipping DATA inclusion: File not found at {content_str}")
+
+            if data_bytes:
+                payloads.append(core_defs.AUDIT_TAG_DATA)
+                # Assume UTF8/Text, or use RAW
+                # Here, we use RAW (0x01) as most safe default for files
+                fmt = bytes([core_defs.DATA_FMT_RAW]) 
+                payloads.append(fmt + data_bytes)
+                logger.info(f"  v0.2 Payload: Added raw DATA ({len(data_bytes)} bytes).")
+
+        except Exception as e:
+            logger.error(f"  Error including DATA: {e}")
+
+    # OPTIONAL REFERENCE (Path/Filename) ---
+    # makes sense only for 'by_reference', but we just check content_str
+    if (include_ref or include_baseref) and mode == "by_reference":
+        try:
+            ref_string = ""
+            ref_type = 0x00
+            
+            if include_baseref:
+                ref_string = os.path.basename(content_str)
+                ref_type = core_defs.REF_TYPE_FILENAME
+                logger.info(f"  v0.2 Payload: Added Base Reference '{ref_string}'.")
+            elif include_ref:
+                ref_string = content_str
+                ref_type = core_defs.REF_TYPE_PATH
+                logger.info(f"  v0.2 Payload: Added Full Reference '{ref_string}'.")
+            
+            if ref_string:
+                payloads.append(core_defs.AUDIT_TAG_REFERENCE)
+                type_byte = bytes([ref_type])
+                payloads.append(type_byte + ref_string.encode('utf-8'))
+                
+        except Exception as e:
+            logger.error(f"  Error including REFERENCE: {e}")
+    #endregion
+
+    # 3. EC SIGNATURE (Optional via Flag)
+    # CHANGE: Check flag before signing
+    if include_ec and Config.PRIVATE_SIGNING_KEY_WIF:
+        try:
+            priv_key = PrivateKey(Config.PRIVATE_SIGNING_KEY_WIF, network=Config.ACTIVE_NETWORK_BSV)
+            pub_key_bytes = priv_key.public_key().serialize()
+            signature_bytes = priv_key.sign(data_hash)
+
+            # A. PubKey
+            payloads.append(core_defs.AUDIT_TAG_PUBKEY)
+            key_type = bytes([core_defs.KEY_TYPE_COMPRESSED]) 
+            payloads.append(key_type + pub_key_bytes)
+
+            # B. Signature
+            payloads.append(core_defs.AUDIT_TAG_SIG_EC)
+            sig_fmt = bytes([core_defs.SIG_FMT_DER]) 
+            payloads.append(sig_fmt + signature_bytes)
+            
+            logger.info(f"  v0.2 Payload: Added EC Signature (DER).")
+        except Exception as e:
+            logger.error(f"  Error creating EC signature: {e}")
+    elif not include_ec:
+        logger.info(f"  v0.2 Payload: Skipped EC Signature (requested via options).")
+
+    # 4. X.509 CERTIFICATE (Optional via Flag)
+    # CHANGE: Check flag before adding cert
+    x509_label = Config.ANCHOR_CERT_LABEL
+    if include_x509:
+        cert_info = key_x509_manager.get_x509_key_pair_by_label(x509_label)
+        if cert_info and cert_info.get('certificate_pem'):
+            try:
+                cert_bytes = cert_info['certificate_pem'].encode('utf-8')
+                payloads.append(core_defs.AUDIT_TAG_CERT)
+                cert_fmt = bytes([0x00]) 
+                payloads.append(cert_fmt + cert_bytes)
+                logger.info(f"  v0.2 Payload: Added X.509 Certificate.")
+            except Exception as e:
+                 logger.error(f"  Error adding X.509 cert: {e}")
+    elif not include_x509:
+        logger.info(f"  v0.2 Payload: Skipped X.509 Certificate (requested via options).")
+
+    return payloads
+
+
+#region tobereplaced format v01->02
+def _build_payloads_legacy_v01(
+    content_str: str, 
+    data_hash: bytes, 
     mode: str
 ) -> List[bytes]:
-    """Constructs the list of data pushes (AppID, EC, X509). 
+    """
+    DEPRECATED
+    Constructs the list of data pushes (AppID, EC, X509). 
     op_return_payload_for_tx = app_id_payload + ec_payload + x509_payload """
     
     # 1. App ID
@@ -79,9 +221,8 @@ def _build_payloads(
     else:
         payloads += publisher.build_audit_payload_prehashed(data_hash, Config.PRIVATE_SIGNING_KEY_WIF)
 
-    # 3. X.509 Certificate (Optional)
-    # TODO: Make the label configurable if needed
-    x509_label = 'anchor_example_certificate'
+    # 3. X.509 Certificate (Optional)   
+    x509_label = Config.ANCHOR_CERT_LABEL
     cert_info = key_x509_manager.get_x509_key_pair_by_label(x509_label)
     
     if cert_info and cert_info.get('private_key_pem') and cert_info.get('certificate_pem'):
@@ -93,8 +234,93 @@ def _build_payloads(
             payloads += publisher.build_x509_audit_payload_prehashed(data_hash, priv_pem, cert_pem)
             
     return payloads
+#endregion
+
 
 def _create_audit_record_entry(
+    log_id: str,
+    keyword: str | None,
+    mode: str,
+    content_str: str,
+    record_note: str | None,
+    tx_note: str | None,
+    payloads: List[bytes]
+) -> Dict:
+    """Creates the initial dictionary for the audit record. Supports v0.1 and v0.2."""
+    
+    ec_hash = None
+    ec_sig = None
+    x509_hash = None
+    x509_cert = None
+
+    # --- Dispatcher Logic for Metadata Extraction ---
+    is_v2 = False
+    if len(payloads) > 1 and payloads[0] == core_defs.AUDIT_MODE_APP_ID:
+        try:
+            if "v0.2" in payloads[1].decode('utf-8'):
+                is_v2 = True
+        except: pass
+
+    if is_v2:
+        # --- v0.2 Extraction (Atomic Tags) ---
+        idx = 2
+        while idx < len(payloads) - 1:
+            tag = payloads[idx]
+            val = payloads[idx+1]
+            
+            if tag == core_defs.AUDIT_TAG_HASH:
+                # Value = [AlgoByte + Hash]
+                if len(val) > 1: ec_hash = val[1:] # Store raw hash
+            elif tag == core_defs.AUDIT_TAG_SIG_EC:
+                # Value = [FmtByte + Sig]
+                if len(val) > 1: ec_sig = val[1:]
+            elif tag == core_defs.AUDIT_TAG_CERT:
+                # Value = [FmtByte + Cert]
+                if len(val) > 1: x509_cert = val[1:]
+            
+            idx += 2
+            
+        # In v0.2 we use the same hash for everything usually
+        x509_hash = ec_hash 
+
+    else:
+        # --- v0.1 Extraction (Legacy) ---
+        def find_payload_data(mode_byte):
+            try:
+                idx = payloads.index(mode_byte)
+                if idx + 3 < len(payloads):
+                    return payloads[idx+1], payloads[idx+2], payloads[idx+3]
+            except ValueError:
+                pass
+            return None, None, None
+
+        ec_hash, ec_sig, _ = find_payload_data(core_defs.AUDIT_MODE_EC)
+        x509_hash, _, cert_bytes = find_payload_data(core_defs.AUDIT_MODE_X509)
+        if cert_bytes: x509_cert = cert_bytes
+
+    # --- Build Record ---
+    return {
+        "log_id": log_id,
+        "keyword": keyword,
+        "data_storage_mode": mode,
+        "original_audit_content": content_str,
+        "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
+        "format": "v0.2" if is_v2 else core_defs.AUDIT_RECORD_FORMAT_V1,
+        "blockchain_record": {
+            "txid": None,
+            "status": "pending_creation",
+            "data_hash_pushed_to_op_return": ec_hash.hex() if ec_hash else None,
+            "signature_pushed_to_op_return": ec_sig.hex() if ec_sig else None,
+            "x509_hash_pushed": x509_hash.hex() if x509_hash else None,
+            # Cert is often bytes, need decoding for JSON if possible, or hex
+            "x509_certificate_pushed": x509_cert.decode('utf-8', errors='ignore') if x509_cert else None,
+            "tx_note": tx_note
+        },
+        "notes": record_note or ""
+    }
+
+#region v01 deprecated
+def _create_audit_record_entry_v01(
     log_id: str,
     keyword: str | None,
     mode: str,
@@ -137,7 +363,7 @@ def _create_audit_record_entry(
         },
         "notes": record_note or ""
     }
-
+#endregion v01 deprecated
 
 # --- Public Interface ---
 
@@ -188,7 +414,9 @@ async def log_audit_event(
         tx_note: str | None = None,
         keyword: str | None = "general",
         dry_run: bool = False,
-        no_broadcast: bool = False) -> bool:
+        no_broadcast: bool = False,
+        payload_options: Optional[Dict[str, Any]] = None
+        ) -> bool:
     """
     Main service function to log an event.
     Handles preparation, locking, transaction creation, and storage updates.
@@ -228,6 +456,8 @@ async def log_audit_event(
 
 
     # 3. Execution (Locking & Transaction)
+    # INCREASED TIMEOUT: Network calls might happen inside create_op_return_transaction (fetching raw transactions)
+    LOCK_TIMEOUT = 60
     try:
         # Atomic lock on all stores
         # INCREASED TIMEOUT: Network calls might happen inside create_op_return_transaction (fetching raw transactions)
@@ -244,7 +474,12 @@ async def log_audit_event(
             store_used = wallet_manager.load_used_utxo_store(f_used)
 
             # Build Payloads
-            op_return_pushes = _build_payloads(content_str, data_hash, data_storage_mode)
+            op_return_pushes = _build_payloads(
+                content_str, 
+                data_hash, 
+                data_storage_mode,
+                options=payload_options
+            )
             
             # Create Record Entry
             log_id = str(uuid.uuid4())
@@ -329,7 +564,7 @@ async def log_audit_event(
                 return False
 
     except portalocker.exceptions.LockException:
-        logger.error("Could not acquire file locks within {LOCK_TIMEOUT}. Is another process running?")
+        logger.error(f"Could not acquire file locks within {LOCK_TIMEOUT}. Is another process running?")
         return False
     except Exception as e:
         logger.error(f"Service Error: {e}", exc_info=True)

@@ -277,7 +277,45 @@ async def _verify_spv_proof(
     logger.info(f"  PASS: SPV proof check.")
     return True
 
+def _dispatch_payload_verification(
+    all_data_pushes: List[bytes], 
+    recomputed_original_hash: bytes, 
+    checks_to_perform: dict
+) -> tuple[bool, str]:
+    """
+    Dispatcher: Ermittelt die Protokollversion aus den Rohdaten und 
+    wählt die passende Verifikations-Logik (Legacy v0.1 vs. Atomic v0.2).
+    """
+    protocol_version = "v0.1" # Default fallback for legacy records without AppID
+    
+    # Check if AppID tag is present and try to read the version string
+    if len(all_data_pushes) > 1 and all_data_pushes[0] == core_defs.AUDIT_MODE_APP_ID:
+        try:
+            # The second element is the version string
+            potential_version = all_data_pushes[1].decode('utf-8')
+            if "v0." in potential_version: 
+                protocol_version = potential_version
+        except Exception: 
+            pass
+    
+    logger.info(f"  Protocol Version detected: {protocol_version}")
 
+    # Router
+    if "v0.1" in protocol_version:
+        return _verify_payload_loop_legacy_v01(
+            all_data_pushes, 
+            recomputed_original_hash, 
+            checks_to_perform
+        )
+    elif "v0.2" in protocol_version:
+        return _verify_payload_loop_atomic_v02(
+            all_data_pushes, 
+            recomputed_original_hash, 
+            checks_to_perform
+        )
+    else:
+        logger.error(f"  FAIL: Unknown Protocol Version: {protocol_version}")
+        return False, ""
 
 async def verify_record(
     record: dict, 
@@ -448,10 +486,14 @@ async def verify_record(
             payload_ok = False
             result["failures"].append("No OP_RETURN data found.")
         else:
-            payload_ok_check, _ = _verify_payload_loop(
-                                all_data_pushes, 
-                                computed_original_hash, 
-                                checks_to_perform)
+         
+            payload_ok_check, _ = _dispatch_payload_verification(
+                    all_data_pushes, 
+                    computed_original_hash, 
+                    checks_to_perform
+                )
+
+
             if not payload_ok_check:
                 logger.error(f"  FAIL: Payload integrity check (signatures) failed.")
                 payload_ok = False
@@ -482,6 +524,9 @@ async def verify_record(
         result["overall_status"] = "failed"
         
     return result
+
+
+
 
 
 async def audit_records_runner(
@@ -832,15 +877,16 @@ def verify_x509_payload(
     return verification_passed
 
 
-def _verify_payload_loop( # without async!
+def _verify_payload_loop_legacy_v01( # without async!
     all_data_pushes: List[bytes], 
     recomputed_original_hash: bytes, 
     checks_to_perform: dict
 ) -> tuple[bool,str]:
     """
-    Internal V3 helper to loop through and verify all OP_RETURN payloads
+    Internal V01 helper to loop through and verify all OP_RETURN payloads
     based on the granular checks_to_perform flags.
-    V2->3: calling with precomputed hash computed from the original instead of original content
+    V01->02: calling with precomputed hash computed from the original instead of original content
+    Attention, will be used for older AnchorForge Data
     """
     logger.info(f"  Verifying Step 3: Payload Data Integrity (Signatures)...")
     current_index = 0
@@ -899,4 +945,166 @@ def _verify_payload_loop( # without async!
     logger.info(f"  PASS: Payload integrity check.")
     return (True, found_app_id)
 
+def _verify_payload_loop_atomic_v02(
+    all_data_pushes: List[bytes], 
+    recomputed_original_hash: bytes, 
+    checks_to_perform: dict
+) -> tuple[bool, str]:
+    """
+    V2 Atomic Loop: Processes a flexible list of tags (TLV).
+    Supports multiple signatures, notes, and certificates in a single payload.
+    """
+    logger.info("  --- V2 (Atomic) Payload Verification ---")
+    
+    current_hash = None
+    # Store the Public Key if it appears before the signature (or applies globally)
+    current_pubkey_bytes = None 
+    
+    verification_passed = True
+    found_app_id = "" # Can be used to return specific IDs if needed
 
+    # Index starts at 2 (0=AppID, 1=VersionString are already checked by the dispatcher)
+    idx = 2 
+    
+    while idx < len(all_data_pushes):
+        # We always expect pairs: [TAG] [VALUE]
+        if idx + 1 >= len(all_data_pushes):
+            logger.error(f"  FAIL: Tag at index {idx} has no corresponding Value.")
+            return False, found_app_id
+            
+        tag_chunk = all_data_pushes[idx]
+        value_chunk = all_data_pushes[idx+1]
+        
+        # --- TAG: HASH ---
+        if tag_chunk == core_defs.AUDIT_TAG_HASH:
+            # Format: [Algo-Byte (1) + Hash-Bytes (n)]
+            if len(value_chunk) < 2:
+                logger.error("  FAIL: Hash value too short (missing Algo-Byte).")
+                verification_passed = False
+            else:
+                algo_byte = value_chunk[0]
+                stored_hash = value_chunk[1:]
+                
+                # Info-Log for Algorithm (interesting for PoC)
+                algo_name = "UNKNOWN"
+                if algo_byte == core_defs.HASH_ALGO_SHA256: algo_name = "SHA256"
+                logger.info(f"  [TAG_HASH] Algo: {algo_name}, Hash: {stored_hash.hex()[:10]}...")
+
+                # Verification (only if flag is set)
+                if checks_to_perform.get("check_ec_hash") or checks_to_perform.get("check_x509_hash"):
+                    if stored_hash == recomputed_original_hash:
+                        logger.info("    -> Hash Match: PASS")
+                        current_hash = stored_hash # Set hash for subsequent signatures
+                    else:
+                        logger.error(f"    -> Hash Mismatch! Expected: {recomputed_original_hash.hex()[:10]}...")
+                        verification_passed = False
+        
+        # --- TAG: PUBLIC KEY ---
+        elif tag_chunk == core_defs.AUDIT_TAG_PUBKEY:
+            # Format: [Type-Byte (1) + Key-Bytes (n)]
+            if len(value_chunk) < 2:
+                logger.error("  FAIL: PubKey value too short.")
+                verification_passed = False
+            else:
+                # byte 0 is type (compressed/uncompressed), we store the key bytes
+                current_pubkey_bytes = value_chunk[1:] 
+                logger.info(f"  [TAG_PUBKEY] Key loaded ({len(current_pubkey_bytes)} bytes)")
+
+        # --- TAG: EC SIGNATURE ---
+        elif tag_chunk == core_defs.AUDIT_TAG_SIG_EC:
+            # Format: [Format-Byte (1) + Sig-Bytes (n)]
+            if len(value_chunk) < 2:
+                logger.error("  FAIL: Sig value too short.")
+                verification_passed = False
+            else:
+                sig_fmt = value_chunk[0]
+                sig_bytes = value_chunk[1:]
+                
+                fmt_name = "UNKNOWN"
+                if sig_fmt == core_defs.SIG_FMT_RAW: fmt_name = "RAW"
+                elif sig_fmt == core_defs.SIG_FMT_DER: fmt_name = "DER"
+                elif sig_fmt == core_defs.SIG_FMT_BSM: fmt_name = "BSM" # (Bitcoin Signed Message)
+                
+                logger.info(f"  [TAG_SIG_EC] Format: {fmt_name}")
+
+                if checks_to_perform.get("check_ec_signature"):
+                    if current_hash is None:
+                        logger.error("    -> FAIL: Signature found, but no Hash defined previously.")
+                        verification_passed = False
+                    elif current_pubkey_bytes is None:
+                         logger.error("    -> FAIL: Signature found, but no PubKey defined previously.")
+                         # TODO: Could implement Compact-Sig Recovery here later
+                         verification_passed = False
+                    else:
+                        try:
+                            # Using bsv.PublicKey for verification
+                            # Note: The library expects specific formats (DER/RAW).
+                            # We assume the publisher sends compatible bytes for now.
+                            pub_key_obj = PublicKey(current_pubkey_bytes)
+                            
+                            if pub_key_obj.verify(sig_bytes, current_hash):
+                                logger.info("    -> Signature Check: PASS")
+                            else:
+                                logger.error("    -> Signature Check: FAIL")
+                                verification_passed = False
+                        except Exception as e:
+                            logger.error(f"    -> Sig Check Exception: {e}")
+                            verification_passed = False
+
+        # --- TAG: NOTE ---
+        elif tag_chunk == core_defs.AUDIT_TAG_NOTE:
+            try:
+                note_str = value_chunk.decode('utf-8')
+                logger.info(f"  [TAG_NOTE] '{note_str}'")
+            except:
+                logger.warning(f"  [TAG_NOTE] Could not decode note (Hex: {value_chunk.hex()})")
+
+
+        # --- TAG: DATA (On-Chain Content) ---
+        elif tag_chunk == core_defs.AUDIT_TAG_DATA:
+            # Format: [Format-Byte (1) + Data-Bytes (n)]
+            if len(value_chunk) < 1:
+                logger.warning("  [TAG_DATA] Empty data value.")
+            else:
+                fmt_byte = value_chunk[0]
+                data_content = value_chunk[1:]
+                
+                # Check format (0x00=UTF8, 0x01=RAW)
+                is_utf8 = (fmt_byte == core_defs.DATA_FMT_UTF8)
+                
+                # Try to decode for display if UTF8 or looks like text
+                display_str = f"<BINARY DATA: {len(data_content)} bytes>"
+                if is_utf8:
+                    try:
+                        display_str = f"'{data_content.decode('utf-8')}'"
+                    except: pass
+                
+                logger.info(f"  [TAG_DATA] Format: {hex(fmt_byte)}, Content: {display_str}")
+
+        # --- TAG: REFERENCE (File Reference) ---
+        elif tag_chunk == core_defs.AUDIT_TAG_REFERENCE:
+            # Format: [Type-Byte (1) + Path-String (n)]
+            if len(value_chunk) < 1:
+                logger.warning("  [TAG_REFERENCE] Empty reference value.")
+            else:
+                ref_type = value_chunk[0]
+                ref_path_bytes = value_chunk[1:]
+                
+                type_str = "UNKNOWN"
+                if ref_type == core_defs.REF_TYPE_PATH: type_str = "FULL PATH"
+                elif ref_type == core_defs.REF_TYPE_FILENAME: type_str = "FILENAME"
+                
+                try:
+                    ref_path = ref_path_bytes.decode('utf-8')
+                    logger.info(f"  [TAG_REFERENCE] Type: {type_str}, Path: '{ref_path}'")
+                except:
+                    logger.warning(f"  [TAG_REFERENCE] Type: {type_str}, Path: <Undecodable>")
+
+        # --- UNKNOWN TAG ---
+        else:
+            logger.warning(f"  [UNKNOWN TAG] {tag_chunk.hex()} (Length: {len(value_chunk)})")
+            # We do not abort, but ignore it (Forward Compatibility)
+
+        idx += 2 # Move to next Tag-Value pair
+
+    return verification_passed, found_app_id

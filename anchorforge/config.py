@@ -52,7 +52,9 @@ class Config:
         pass 
 
     # --- Protocol Identifier ---
-    ANCHOR_FORGE_ID = "AnchorForge v0.1"
+    # ANCHOR_FORGE_ID = "AnchorForge v0.1" # until 2026-01-17
+    ANCHOR_FORGE_ID = "AnchorForge v0.2"
+    
 
     ACTIVE_NETWORK_NAME = os.getenv("NETWORK", "test").lower()
 

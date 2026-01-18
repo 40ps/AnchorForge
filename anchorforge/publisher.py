@@ -375,8 +375,7 @@ async def create_op_return_transaction(
 
     logger.info(f"OP_RETURN script (Hex): {op_return_script.hex()}")
     
-    core_defs.print_op_return_scriptpubkey(op_return_script) # TODO buggy!
-
+    core_defs.print_op_return_scriptpubkey(op_return_script)
 
 
     # 2. Prepare Inputs

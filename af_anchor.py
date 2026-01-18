@@ -1,10 +1,23 @@
 # af_anchor.py
 '''
 This program serves as the entry point for logging a single audit event.
-(Version 0.3: Now supports --data for 'embedded' and --file for 'by_reference')
+(Version 0.2: 
+    no allows flexible signaturs
+
+
+--data for 'embedded' / --file for 'by_reference'
+
 
 --dry-run no change to stores
 --no-broadcast no broardcast, BUT updates all Stores
+
+Signaturs:
+All (default): python af_anchor.py --data "Test" --mainnet ( Hash + EC Sig + X.509)
+Hash only (Minimal): python af_anchor.py --data "Test" --skip-ec --skip-x509 --mainnet (contains only Hash + AppID)
+EC only(without Cert): python af_anchor.py --data "Test" --skip-x509 --mainnet
+
+
+
 '''
 
 import asyncio
@@ -56,15 +69,17 @@ Config.validate_wallet_config()
 
 async def main():
     """
-    (Version 0.3)
+    (Version 0.2)
     Main entry point. Parses arguments and passes them to the worker function.
     Now supports mutually exclusive --data and --file arguments.
+    can include data on-chain limited at ONCHAIN_DATA_SIZE_LIMIT
+    Flexible config of signature algorithms
     """
     Config.validate_wallet_config()
 
     
     parser = argparse.ArgumentParser(
-        description="AnchorForge v0.1: Log a single audit event.",
+        description="AnchorForge v0.2: Log a single audit event.",
         formatter_class=argparse.RawTextHelpFormatter
     )
     
@@ -81,6 +96,14 @@ async def main():
     parser.add_argument(  '--no-broadcast', action='store_true', help="Create the transaction and update stores, but do not broadcast to the network." )
     parser.add_argument(  '--mainnet', action='store_true', help="Force use of mainnet. Must be explicitly set."    )
 
+
+    parser.add_argument(
+        '--include', 
+        type=str, 
+        default="hash,ec,x509", # Default: Sicherer Standard
+        help="Comma-separated list. Options: hash, ec, x509, data, reference, basereference."
+    )
+
     args = parser.parse_args()
 
     # 1. Safety check for mainnet
@@ -96,6 +119,18 @@ async def main():
     # Dependencies
     utils.ensure_json_file_exists(Config.AUDIT_LOG_FILE)
     # intentionally removed: utils.ensure_json_file_exists(Config.TX_STORE_FILE)
+
+    components = [c.strip().lower() for c in args.include.split(',')]
+    payload_opts = {
+        "include_ec": "ec" in components,
+        "include_x509": "x509" in components,
+        "include_data": "data" in components,
+        "include_reference": "reference" in components,
+        "include_basereference": "basereference" in components
+    }
+
+    # Note: baseref wins
+
 
     mode = "embedded" if args.data else "by_reference"
     logging.info(f"Received data (mode: {mode})")
@@ -117,7 +152,8 @@ async def main():
             tx_note=utils.get_content_from_source(args.transaction_note),
             keyword=args.keyword,
             dry_run=args.dry_run,
-            no_broadcast=args.no_broadcast
+            no_broadcast=args.no_broadcast,
+            payload_options=payload_opts
         )
 
 if __name__ == "__main__":

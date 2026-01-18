@@ -1,8 +1,14 @@
 # core_defs.py  
-#    was audit_common.py
+# 
 '''
 Common definitions, constants, and utility functions shared between 
 the Publisher (creation) and Verifier (checking) modules.
+
+Recent change:
+- Introducing V0.2 ATOMOC TAGS (TLV)
+- Types for References and Data
+
+#TODO ADAPT AUDIT_RECORD_FORMATSTRING
 '''
 
 import json
@@ -14,13 +20,43 @@ logger = logging.getLogger(__name__)
 
 VIBECODEVERSION=0.1
 
-# --- AUDIT MODE CONSTANTS ---
+# --- V0.2 ATOMIC TAGS (TLV Concept) ---
+AUDIT_TAG_HASH      = b'H'  # [Algo-Byte (1) + Hash (n)]
+AUDIT_TAG_SIG_EC    = b'S'  # [Format-Byte (1) + Signature (n)]
+AUDIT_TAG_PUBKEY    = b'P'  # [KeyType-Byte (1) + PubKey (n)]
+AUDIT_TAG_CERT      = b'C'  # [Format-Byte (1) + CertData (n)]
+AUDIT_TAG_NOTE      = b'N'  # [UTF-8 String]
+AUDIT_TAG_DATA      = b'D'  # [FormatByte (1) + ContentBytes (n)]
+AUDIT_TAG_REFERENCE = b'R'  # [TypeByte (1) + PathString (n)]
+
+# --- SUBTYPES / FORMATS ---
+# Hash Algos
+HASH_ALGO_SHA256 = 0x00
+
+# Signature Formats
+SIG_FMT_RAW      = 0x00  # r + s (64 bytes)
+SIG_FMT_DER      = 0x01  # DER Encoded (Variable len)
+SIG_FMT_BSM      = 0x02  # Bitcoin Signed Message (Compact + Magic header logic)
+
+# Key Types
+KEY_TYPE_COMPRESSED = 0x00
+KEY_TYPE_UNCOMPRESSED = 0x01
+
+# Subtypes for References
+REF_TYPE_PATH = 0x00      # Full path (e.g. "/tmp/foo.txt")
+REF_TYPE_FILENAME = 0x01  # Basename only (e.g. "foo.txt")
+
+# Subtypes for Data
+DATA_FMT_UTF8 = 0x00
+DATA_FMT_RAW  = 0x01
+
+# --- AUDIT MODE CONSTANTS vor Version 0.1 ---
 AUDIT_MODE_APP_ID = b'\xF0' # Protocol Identifier
 AUDIT_MODE_EC = b'E' # 'E' for Elliptic Curve Digital Signature Algorithm (ECDSA)
 AUDIT_MODE_X509 = b'X' # 'X' for X.509 Certificate
 AUDIT_MODE_NOTE = b'N' # 'N' for a Note or a comment.
 
-# logic structure ofs OP_RETURN Payloads for Version.
+# logic structure ofs OP_RETURN Payloads for Version v0.1.
 AUDIT_RECORD_FORMAT_V1 = "anchor-forge-v1:(xF0,T)|(E,H,S,P)|(X,H,S,C)|(N,T)+"
 
 
