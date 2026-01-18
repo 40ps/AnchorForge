@@ -5,6 +5,7 @@
 local_config/.env
 local_config/.env.py
 local_config/Keystore
+local_config
 
 # Python Environment 
 venv/
@@ -24,6 +25,7 @@ database/.keep
 output/*
 output/.keep
 
+tests/*
 
 playground/*
 !playground/.keep
