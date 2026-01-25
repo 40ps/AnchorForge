@@ -305,7 +305,7 @@ def _create_audit_record_entry(
         "data_storage_mode": mode,
         "original_audit_content": content_str,
         "timestamp_logged_local": datetime.now(timezone.utc).isoformat(),
-        "format": "v0.2" if is_v2 else core_defs.AUDIT_RECORD_FORMAT_V1,
+        "format": core_defs.AUDIT_RECORD_FORMAT_V02 if is_v2 else core_defs.AUDIT_RECORD_FORMAT_V1,
         "blockchain_record": {
             "txid": None,
             "status": "pending_creation",

@@ -56,8 +56,14 @@ AUDIT_MODE_EC = b'E' # 'E' for Elliptic Curve Digital Signature Algorithm (ECDSA
 AUDIT_MODE_X509 = b'X' # 'X' for X.509 Certificate
 AUDIT_MODE_NOTE = b'N' # 'N' for a Note or a comment.
 
-# logic structure ofs OP_RETURN Payloads for Version v0.1.
+# logic structure ofs OP_RETURN Payloads
+# DEPRECATED v0.1 as of 260125 (with wrong versioning numbers still)
 AUDIT_RECORD_FORMAT_V1 = "anchor-forge-v1:(xF0,T)|(E,H,S,P)|(X,H,S,C)|(N,T)+"
+
+# from 26-01-25
+AUDIT_RECORD_FORMAT_V02 = "anchor-forge-v0.2:TLV:[AppID|Hash|PubKey|Sig|Cert|Data|Ref|Note]*"
+
+
 
 
 
