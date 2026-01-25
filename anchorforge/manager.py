@@ -18,6 +18,11 @@ import asyncio
 import os
 import json
 
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+
 from bsv import PrivateKey
 from bsv.hash import sha256
 
@@ -187,11 +192,42 @@ def _build_payloads(
         cert_info = key_x509_manager.get_x509_key_pair_by_label(x509_label)
         if cert_info and cert_info.get('certificate_pem'):
             try:
+                # A. Append certificate
                 cert_bytes = cert_info['certificate_pem'].encode('utf-8')
                 payloads.append(core_defs.AUDIT_TAG_CERT)
                 cert_fmt = bytes([0x00]) 
                 payloads.append(cert_fmt + cert_bytes)
                 logger.info(f"  v0.2 Payload: Added X.509 Certificate.")
+
+                # B. Create signature
+                # Need private key from manager
+                priv_pem_str = cert_info.get('private_key_pem')
+                if priv_pem_str:
+                    # 1. load Private Key
+                    priv_key_obj = serialization.load_pem_private_key(
+                        priv_pem_str.encode('utf-8'), 
+                        password=None
+                    )
+                    
+                    # 2. Sign (Standard: PKCS1v15 + SHA256 for RSA)
+                    # HINT: depends on Key-Type  (RSA vs EC). 
+                    # Hier Beispiel für RSA (Standard bei X.509 im Web).
+                    if isinstance(priv_key_obj, rsa.RSAPrivateKey):
+                        signature = priv_key_obj.sign(
+                            data_hash,
+                            padding.PKCS1v15(),
+                            hashes.SHA256()
+                        )
+
+                        # 3. attach
+                        payloads.append(core_defs.AUDIT_TAG_SIG_X509)
+                        #  we use 0x01 as Marker for "RSA PKCS1v15" (in core_devs)
+                        payloads.append(bytes([0x01]) + signature)
+                        logger.info(f"  v0.2 Payload: Added X.509 Signature.")
+                    else:
+                        # Fallback, if its an Elliptic Curve Key ist (not implemented right now)
+                        logger.warning("  v0.2 Payload: Loaded key is not RSA. Skipping X.509 signature for now.")
+
             except Exception as e:
                  logger.error(f"  Error adding X.509 cert: {e}")
     elif not include_x509:

@@ -13,7 +13,12 @@ import os
 import logging
 import portalocker
 from portalocker import LOCK_EX
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.backends import default_backend
+
 
 
 from bsv import (
@@ -28,13 +33,6 @@ from bsv import (
 )
 
 from bsv.hash import sha256 # Import sha256 function directly from bsv.hash module
-
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.hazmat.backends import default_backend
-
-
 
 from anchorforge.config import Config
 from anchorforge import blockchain_api
@@ -946,6 +944,268 @@ def _verify_payload_loop_legacy_v01( # without async!
     return (True, found_app_id)
 
 def _verify_payload_loop_atomic_v02(
+    all_data_pushes: List[bytes], 
+    recomputed_original_hash: bytes, 
+    checks_to_perform: dict
+) -> tuple[bool, str]:
+    """
+    V2 Atomic Loop: Processes a flexible list of tags (TLV).
+    Supports multiple signatures, notes, and certificates in a single payload.
+    Includes validation that requested checks were actually possible.
+    """
+    logger.info("  --- V2 (Atomic) Payload Verification ---")
+    
+    current_hash = None
+    current_pubkey_bytes = None 
+    current_x509_cert_obj = None
+    
+    # Tracking flags to detect missing data for requested checks
+    has_hash_tag = False
+    has_ec_sig_tag = False
+    has_pubkey_tag = False
+    has_cert_tag = False
+
+    has_x509_tag = False
+    has_x509_sig_tag = False
+    
+    verification_passed = True
+    found_app_id = "" 
+
+    idx = 2 
+    
+    while idx < len(all_data_pushes):
+        # We always expect pairs: [TAG] [VALUE]
+        if idx + 1 >= len(all_data_pushes):
+            logger.error(f"  FAIL: Tag at index {idx} has no corresponding Value.")
+            return False, found_app_id
+            
+        tag_chunk = all_data_pushes[idx]
+        value_chunk = all_data_pushes[idx+1]
+        
+        # --- TAG: HASH ---
+        if tag_chunk == core_defs.AUDIT_TAG_HASH:
+            # Format: [Algo-Byte (1) + Hash-Bytes (n)]
+            has_hash_tag = True
+            if len(value_chunk) < 2:
+                logger.error("  FAIL: Hash value too short.")
+                verification_passed = False
+            else:
+                algo_byte = value_chunk[0]
+                stored_hash = value_chunk[1:]
+                
+                # Info-Log for Algorithm (interesting for PoC)
+                algo_name = "UNKNOWN"
+
+                algo_name = "SHA256" if algo_byte == core_defs.HASH_ALGO_SHA256 else "UNKNOWN"
+                logger.info(f"  [TAG_HASH] Algo: {algo_name}, Hash: {stored_hash.hex()[:10]}...")
+
+                # Verification (only if flag is set)
+                if checks_to_perform.get("check_ec_hash") or checks_to_perform.get("check_x509_hash"):
+                    if stored_hash == recomputed_original_hash:
+                        logger.info("    -> Hash Match: PASS")
+                        current_hash = stored_hash  # Set hash for subsequent signatures
+                    else:
+                        logger.error(f"    -> Hash Mismatch! Expected: {recomputed_original_hash.hex()[:10]}...")
+                        verification_passed = False
+        
+        # --- TAG: PUBLIC KEY ---
+        elif tag_chunk == core_defs.AUDIT_TAG_PUBKEY:
+            # Format: [Type-Byte (1) + Key-Bytes (n)]
+            has_pubkey_tag = True
+            if len(value_chunk) < 2:
+                logger.error("  FAIL: PubKey value too short.")
+                verification_passed = False
+            else:
+                # byte 0 is type (compressed/uncompressed), we store the key bytes
+                current_pubkey_bytes = value_chunk[1:] 
+                logger.info(f"  [TAG_PUBKEY] Key loaded ({len(current_pubkey_bytes)} bytes)")
+
+        # --- TAG: EC SIGNATURE ---
+        elif tag_chunk == core_defs.AUDIT_TAG_SIG_EC:
+            # Format: [Format-Byte (1) + Sig-Bytes (n)]
+            has_ec_sig_tag = True
+            if len(value_chunk) < 2:
+                logger.error("  FAIL: Sig value too short.")
+                verification_passed = False
+            else:
+                sig_fmt = value_chunk[0]
+                sig_bytes = value_chunk[1:]
+
+                fmt_name = "UNKNOWN"
+                if sig_fmt == core_defs.SIG_FMT_RAW: fmt_name = "RAW"
+                elif sig_fmt == core_defs.SIG_FMT_DER: fmt_name = "DER"
+                elif sig_fmt == core_defs.SIG_FMT_BSM: fmt_name = "BSM" # (Bitcoin Signed Message)
+                    
+
+                logger.info(f"  [TAG_SIG_EC] Format: {fmt_name}")
+
+                if checks_to_perform.get("check_ec_signature"):
+                    if current_hash is None:
+                        logger.error("    -> FAIL: Signature found, but no Hash defined previously.")
+                        verification_passed = False
+                    elif current_pubkey_bytes is None:
+                         logger.error("    -> FAIL: Signature found, but no PubKey defined previously.")
+                         # TODO: Could implement Compact-Sig Recovery here later 
+                         verification_passed = False
+                    else:
+                        try:
+                            # Using bsv.PublicKey for verification
+                            # Note: The library expects specific formats (DER/RAW).
+                            # We assume the publisher sends compatible bytes for now.
+                            pub_key_obj = PublicKey(current_pubkey_bytes)
+
+                            if pub_key_obj.verify(sig_bytes, current_hash):
+                                logger.info("    -> Signature Check: PASS")
+                            else:
+                                logger.error("    -> Signature Check: FAIL")
+                                verification_passed = False
+                        except Exception as e:
+                            logger.error(f"    -> Sig Check Exception: {e}")
+                            verification_passed = False
+
+        # --- TAG: NOTE ---
+        elif tag_chunk == core_defs.AUDIT_TAG_NOTE:
+            try:
+                note_str = value_chunk.decode('utf-8')
+                logger.info(f"  [TAG_NOTE] '{note_str}'")
+            except:
+                logger.warning(f"  [TAG_NOTE] Could not decode note (Hex: {value_chunk.hex()})")
+
+        # --- TAG: CERTIFICATE (X.509) ---
+        elif tag_chunk == core_defs.AUDIT_TAG_CERT:
+            has_cert_tag = True
+            if len(value_chunk) < 2:
+                logger.warning("  [TAG_CERT] Empty cert value.")
+            else:
+                cert_pem_bytes = value_chunk[1:]
+                logger.info(f"  [TAG_CERT] X.509 Certificate found ({len(value_chunk)-1} bytes).")
+                try:
+                    # Parse Certificate
+                    current_x509_cert_obj = x509.load_pem_x509_certificate(cert_pem_bytes, default_backend())
+                    
+                    # Optional: Log Issuer/Subject
+                    subject = current_x509_cert_obj.subject.rfc4514_string()
+                    logger.info(f"    -> Subject: {subject}")
+                except Exception as e:
+                    logger.error(f"    -> FAIL: Could not parse X.509 certificate: {e}")
+        
+        # --- TAG: X.509 SIGNATURE ---
+        elif tag_chunk == core_defs.AUDIT_TAG_SIG_X509:
+            has_x509_sig_tag = True
+            if len(value_chunk) < 2:
+                logger.error("  FAIL: X.509 Sig value too short.")
+                verification_passed = False
+            else:
+                # byte 0 = algo (0x01 = RSA PKCS1v15)
+                # sig_algo_byte = value_chunk[0] # unused for now, assumed RSA
+                sig_bytes = value_chunk[1:]
+                logger.info(f"  [TAG_SIG_X509] Signature found ({len(sig_bytes)} bytes).")
+                
+                if checks_to_perform.get("check_x509_signature"):
+                    if current_hash is None:
+                        logger.error("    -> FAIL: Sig found but no Hash defined previously.")
+                        verification_passed = False
+                    elif current_x509_cert_obj is None:
+                        logger.error("    -> FAIL: Sig found but no Certificate loaded yet.")
+                        verification_passed = False
+                    else:
+                        try:
+                            # Get Public Key from Cert
+                            pub_key = current_x509_cert_obj.public_key()
+                            
+                            # Type Guard for Pylance/Runtime
+                            if isinstance(pub_key, rsa.RSAPublicKey):
+                                pub_key.verify(
+                                    sig_bytes,
+                                    current_hash,
+                                    padding.PKCS1v15(),
+                                    hashes.SHA256()
+                                )
+                                logger.info("    -> X.509 Signature Check: PASS")
+                            else:
+                                logger.warning(f"    -> SKIPPED: Certificate key type {type(pub_key)} is not RSA.")
+                                # Optional: verification_passed = False
+                                
+                        except Exception as e:
+                            logger.error(f"    -> X.509 Signature Check: FAIL ({e})")
+                            verification_passed = False
+
+
+        # --- TAG: DATA (On-Chain Content) ---
+        elif tag_chunk == core_defs.AUDIT_TAG_DATA:
+            # Format: [Format-Byte (1) + Data-Bytes (n)]
+            if len(value_chunk) < 1:
+                logger.warning("  [TAG_DATA] Empty data value.")
+            else:
+                fmt_byte = value_chunk[0]
+                data_content = value_chunk[1:]
+                
+                # Check format (0x00=UTF8, 0x01=RAW)
+                is_utf8 = (fmt_byte == core_defs.DATA_FMT_UTF8)
+                
+                # Try to decode for display if UTF8 or looks like text
+                display_str = f"<BINARY DATA: {len(data_content)} bytes>"
+                if is_utf8:
+                    try:
+                        display_str = f"'{data_content.decode('utf-8')}'"
+                    except: pass
+                
+                logger.info(f"  [TAG_DATA] Format: {hex(fmt_byte)}, Content: {display_str}")
+
+        # --- TAG: REFERENCE (File Reference) ---
+        elif tag_chunk == core_defs.AUDIT_TAG_REFERENCE:
+            # Format: [Type-Byte (1) + Path-String (n)]
+            if len(value_chunk) < 1:
+                logger.warning("  [TAG_REFERENCE] Empty reference value.")
+            else:
+                ref_type = value_chunk[0]
+                ref_path_bytes = value_chunk[1:]
+                
+                type_str = "UNKNOWN"
+                if ref_type == core_defs.REF_TYPE_PATH: type_str = "FULL PATH"
+                elif ref_type == core_defs.REF_TYPE_FILENAME: type_str = "FILENAME"
+                
+                try:
+                    ref_path = ref_path_bytes.decode('utf-8')
+                    logger.info(f"  [TAG_REFERENCE] Type: {type_str}, Path: '{ref_path}'")
+                except:
+                    logger.warning(f"  [TAG_REFERENCE] Type: {type_str}, Path: <Undecodable>")
+
+        # --- UNKNOWN TAG ---
+        else:
+            logger.warning(f"  [UNKNOWN TAG] {tag_chunk.hex()} (Length: {len(value_chunk)})")
+            # We do not abort, but ignore it (Forward Compatibility)
+
+        idx += 2 
+
+    # --- FINAL CONSISTENCY CHECK ---
+    # Check whether we ignored checks due to missing data
+    
+    # 0. BASIC INTEGRITY: Hash has to be there always
+    if not has_hash_tag:
+        logger.error("  [FAIL] Critical: No Data Hash found in payload.")
+        verification_passed = False
+
+    # 1. EC Signature Check requested?
+    if checks_to_perform.get("check_ec_signature"):
+        if not has_ec_sig_tag:
+            logger.warning("  [WARNING] 'check_ec_signature' requested, but NO EC Signature found.")
+            # verification_passed = False # Optionally, depending on strategy
+        elif not has_pubkey_tag:
+            logger.warning("  [WARNING] EC Signature found, but NO Public Key found. Verification impossible.")
+
+    # 2. X.509 Check requested?
+    if checks_to_perform.get("check_x509_signature") or checks_to_perform.get("check_x509_hash"):
+        # Check Cert presence
+        if not has_cert_tag:
+            logger.warning("  [WARNING] X.509 check requested, but NO Certificate found.")
+        
+        # Check Sig presence (releveant only, when we want to check signatures)
+        if checks_to_perform.get("check_x509_signature") and not has_x509_sig_tag:
+             logger.warning("  [WARNING] 'check_x509_signature' requested, but NO X.509 Signature found.")
+    return verification_passed, found_app_id
+
+def OLD_verify_payload_loop_atomic_v02_obsolete_with_260125(
     all_data_pushes: List[bytes], 
     recomputed_original_hash: bytes, 
     checks_to_perform: dict
