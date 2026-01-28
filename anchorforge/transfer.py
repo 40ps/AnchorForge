@@ -61,8 +61,9 @@ def _normalize_utxo(u: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 # Main API
 # ---------------------------------------------------------------------------
 
-async def sweep_to_bank(
+async def sweep_funds(
     private_key_wif: str,
+    destination_address:str,
     broadcast: bool = True,
     min_output_sats: int = 546,
 ) -> Optional[Dict[str, Any]]:
@@ -81,12 +82,11 @@ async def sweep_to_bank(
 
     priv_key = PrivateKey(private_key_wif, network=Config.ACTIVE_NETWORK_BSV)
     sender_address = str(priv_key.address())
-    bank_address = str(Config.BANK_ADDRESS)
 
     logger.info("--- Sweep to Bank ---")
     logger.info(f"Network:        {Config.ACTIVE_NETWORK_NAME}")
     logger.info(f"Source address: {sender_address}")
-    logger.info(f"Bank address:   {bank_address}")
+    logger.info(f"Bank address:   {destination_address}")
 
     # ---------------------------------------------------------------------
     # Fetch + normalize UTXOs
@@ -139,7 +139,7 @@ async def sweep_to_bank(
     # ---------------------------------------------------------------------
 
     bank_output = TransactionOutput(
-        locking_script=P2PKH().lock(bank_address),
+        locking_script=P2PKH().lock(destination_address),
         change=True,
     )
 
@@ -183,7 +183,7 @@ async def sweep_to_bank(
     return {
         "network": Config.ACTIVE_NETWORK_NAME,
         "source_address": sender_address,
-        "bank_address": bank_address,
+        "destination_address": destination_address,
         "txid": txid_broadcast or txid_local,
         "txid_local": txid_local,
         "broadcasted": bool(txid_broadcast) if broadcast else False,

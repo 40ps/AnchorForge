@@ -1,19 +1,32 @@
 import asyncio
+import logging
+
 from anchorforge.config import Config
-from anchorforge.sweep_bank import sweep_to_bank
+from anchorforge.transfer import sweep_funds
 
 async def main():
     Config.validate_wallet_config()
-    wif = "cXXXX"
+    source_wif = Config.TEMPORARY_SOURCE_FUNDS_KEY_WIF
+
+    if not source_wif:
+        print("ERROR: TEMPORARY_SOURCE_FUNDS_KEY_WIF is not set in .env or Config.")
+        return
 
     min_sats = 546
 
     if Config.ACTIVE_NETWORK_NAME == "test":
-        dust_limit = Config.MINIMUM_UTXO_VALUE_TESTNET
+        min_sats = Config.MINIMUM_UTXO_VALUE_TESTNET
     else:
-        dust_limit = Config.MINIMUM_UTXO_VALUE
+        min_sats = Config.MINIMUM_UTXO_VALUE
 
-    res = await sweep_to_bank(wif, broadcast=True, min_output_sats=min_sats)
+
+    assert Config.BANK_ADDRESS is not None, "Bankaddress is not set"
+
+    res = await sweep_funds(
+        private_key_wif=source_wif, 
+        destination_address=Config.BANK_ADDRESS,
+        broadcast=True, 
+        min_output_sats=min_sats)
     print(res)
 
 if __name__ == "__main__":

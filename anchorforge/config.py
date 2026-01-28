@@ -90,6 +90,9 @@ class Config:
     PRIVATE_SIGNING_KEY_WIF: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}PRIVATE_SIGNING_KEY_WIF")
     PRIVATE_BANK_KEY_WIF: Optional[str] = os.getenv(f"{NETWORK_PREFIX}PRIVATE_BANK_KEY_WIF")
     BANK_ADDRESS: Optional[str]  = os.getenv(f"{NETWORK_PREFIX}BANK_ADDRESS")
+
+    TEMPORARY_SOURCE_FUNDS_KEY_WIF: Optional[str] = os.getenv(f"{NETWORK_PREFIX}TEMPORARY_SOURCE_FUNDS_KEY_WIF")
+
     
     KEYPAIR_STORE_FILE: Optional[str] = os.getenv("KEYPAIR_STORE_FILE")
     X509_KEYPAIR_STORE_FILE : Optional[str] = os.getenv("X509_KEYPAIR_STORE_FILE")
