@@ -996,6 +996,8 @@ def _verify_payload_loop_atomic_v02(
                 # Info-Log for Algorithm (interesting for PoC)
                 algo_name = "UNKNOWN"
 
+                current_hash = stored_hash  # Set hash for subsequent signatures
+                
                 algo_name = "SHA256" if algo_byte == core_defs.HASH_ALGO_SHA256 else "UNKNOWN"
                 logger.info(f"  [TAG_HASH] Algo: {algo_name}, Hash: {stored_hash.hex()[:10]}...")
 
@@ -1003,7 +1005,7 @@ def _verify_payload_loop_atomic_v02(
                 if checks_to_perform.get("check_ec_hash") or checks_to_perform.get("check_x509_hash"):
                     if stored_hash == recomputed_original_hash:
                         logger.info("    -> Hash Match: PASS")
-                        current_hash = stored_hash  # Set hash for subsequent signatures
+                        
                     else:
                         logger.error(f"    -> Hash Mismatch! Expected: {recomputed_original_hash.hex()[:10]}...")
                         verification_passed = False
