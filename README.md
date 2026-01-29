@@ -2,7 +2,7 @@
 
 **Scalable, Off-Chain Verifiable Audit Trails on Bitcoin SV**
 
-AnchorForge is a Proof of Concept (PoC) demonstrating how the Bitcoin SV blockchain acts as a public ledger for high-frequency data integrity anchors. Unlike traditional solutions, AnchorForge enables **off-chain verification (SPV)** that scales without requiring a full node.
+AnchorForge is a Proof of Concept (PoC) demonstrating how the Bitcoin SV blockchain acts as a public ledger for high-frequency data integrity anchors. Unlike traditional solutions, AnchorForge enables **off-chain verification (SPV)** that scales without requiring access to blockchain except (for an initial list of blockheaders).
 
 ## ⚠️ Experimental Software Notice
 This project is an early-stage Proof of Concept. It is **not** professional or production-ready software.
@@ -13,7 +13,7 @@ This project is an early-stage Proof of Concept. It is **not** professional or p
 ---
 
 ## 🔗 Project Genesis & Live Proofs
-AnchorForge protocol v0.2 was initialized with these verifiable records. You can inspect them on any BSV block explorer:
+AnchorForge protocol v0.2 was started Jan 2026. First transaction originate 2025. You can inspect them on any BSV block explorer:
 
 ### Bitcoin SV Mainnet
 - **Genesis Address:** `1Z3YVKKVQeE9jDgvdNgiLgTizdC7iqypa`
@@ -21,15 +21,15 @@ AnchorForge protocol v0.2 was initialized with these verifiable records. You can
 
 ### Bitcoin SV Testnet
 - **Genesis Address:** `mj2GaHeg72bq3egeeib4hJiZfWmKuaSy6g`
-- **First Anchor TX:** `370b94987b775c17e2cefa6a0f0f7a6e32945ef83f64affde32275390cd06a13`
+- **First overall TX:** `370b94987b775c17e2cefa6a0f0f7a6e32945ef83f64affde32275390cd06a13`
 
 ---
 
 
 ## 🔒 Security & Privacy Notice
 **Your private keys and audit data are your responsibility.**
-- **Local Storage:** All keys and logs are stored locally in the `local_config/` and `database/` folders.
-- **Git Shield:** The project includes a strict `.gitignore` that prevents your `.env` and `.json` logs from being uploaded.
+- **Local Storage:** All keys and logs should be stored locally in the `local_config/` and `database/` folders.
+- **Git Shield:** Make strict use of `.gitignore` that prevents your `.env` and `.json` logs from being uploaded.
 - **Pre-Flight Check:** Never share your `local_config/.env` file. If you fork this repo, ensure your keys remain in the ignored `local_config/` directory.
 
 For detailed information on how to keep your installation secure, see [Security & Privacy Guide](docs/security_and_privacy.md).
@@ -49,7 +49,8 @@ Comprehensive guides are available in the `/docs` directory:
 5. [Project History](docs/history.md) - Milestones and acknowledgements.
 
 ## 🚀 Examples & Stress-Tests
-Check the `/examples` folder for automated high-frequency logging demonstrations:
+Check the `/examples` folder for automated logging demonstrations (1 request/3 sec to stay API friendly) :
+- (`af_anchor.py`: Logs single events and provides dedicated main example case)
 - `main_batch_iss.py`: Anchoring International Space Station location data.
 - `main_batch_coingecko.py`: Creating verifiable BSV price audit trails.
 *See [Examples Guide](docs/examples.md) for usage details.*
