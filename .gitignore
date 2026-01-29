@@ -1,74 +1,68 @@
-# .gitignore
-
-# Secrets
+# --- AnchorForge: Secrets & Local Config ---
+# Keep templates but ignore the real deal
+!local_config/.env.template
 !local_config/dot_env_template
 local_config/.env
+local_config/.env.*.bak
 local_config/.env.py
-local_config/Keystore
-local_config
+local_config/Keystore/
+local_config/*.json
 
-# Python Environment 
+# Important: Secure specific key files
+key_pairs.json
+
+# --- AnchorForge: Runtime Data & Caches ---
+# Ignore everything in these folders...
+cache/*
+database/*
+output/*
+runtime/*
+playground/*
+
+# ...but keep the folders themselves via .keep or .gitkeep
+!cache/.keep
+!cache/.gitkeep
+!database/.keep
+!database/.gitkeep
+!output/.keep
+!output/.gitkeep
+!runtime/.keep
+!runtime/.gitkeep
+!playground/.keep
+!playground/.gitkeep
+
+# Specific sub-patterns
+cache/wallet/
+cache/*.sim.json
+
+# --- Legacy & Backups ---
+backup/
+BU/
+Legacy/
+genesis_info/
+old_logs/
+audit_log_main/
+
+# --- Python & IDEs ---
 venv/
 .venv/
-
-# Python Bytecode
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.idea/
+.vscode/
 
-anchorforge/__pycache__
-
-cache/*
-cache/.keep
-
-database/*
-database/.keep
-
-output/*
-output/.keep
-
-tests/*
-
-playground/*
-!playground/.keep
-
-runtime/*
-runtime/.keep
-
-backup/*
-Legacy/*
-Legacy/main.py
-
-genesis_info/*
-old_logs/*
-audit_log_main/*
-
+# --- OS & Temporary Files ---
+.DS_Store
+Thumbs.db
 *.log
 *.tmp
-
 *.ps1
-*.pyc
 Remarks-bsv-sdk.txt
-
-*.egg-info/
-.idea/  # für PyCharm
-.vscode/  # für VS Code
-.DS_Store  # macOS-Dateien
-Thumbs.db  # Windows-Dateien
 .env
 .flaskenv
 
-
-key_pairs.json # Secure it!
-
-
-*.egg-info/
-.idea/  # für PyCharm
-.vscode/  # für VS Code
-.DS_Store  # macOS-Dateien
-Thumbs.db  # Windows-Dateien
-.env
-.flaskenv
-key_pairs.json # Secure it!
-Doc/*
-Doc
-BU/
-BU/*
+# --- Project Specific ---
+Doc/
+tests/
