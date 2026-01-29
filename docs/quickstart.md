@@ -18,6 +18,12 @@ pip install -r requirements.txt
 ```
 Copy `local_config/.env.template` to `local_config/.env` and fill in your credentials. ENSURE .env (or any file with secrets) is never commited. Ensure .gitignore contains all files with secrets.
 
+You might need
+```bash
+pip install -e .
+```
+to let the library be known.
+
 ### Initialize the Environment
 
 Run the automated setup script to create the necessary directory structure (`/cache`, `/database`, `/runtime`, etc.) and generate your first local keys if none exist:
@@ -30,6 +36,7 @@ python af_setup_fresh_environment.py
 *Note: If a new key is generated, the script will provide a WIF (Private Key). You must add this to your `local_config/.env` file manually.*
 
 ## 3. Funding the "Bank"
+Start with testnet and testnet coins. Configure .env for testnet. DO NOT merge keys/addresses from both networks. Funds can get lost.
 
 AnchorForge uses a two-tier wallet system to ensure efficiency and prevent transaction chaining issues:
 
@@ -42,7 +49,7 @@ Send a small amount of BSV to the `BANK_ADDRESS` defined in your `.env`.
 
 ### Step B: Create UTXOlets
 
-To perform high-frequency logging, you need to split your bank funds into many small Unspent Transaction Outputs (UTXOs). Use the setup tool to create them:
+To perform frequent logging, you need to split your bank funds into many small Unspent Transaction Outputs (UTXOs). Use the setup tool to create them:
 
 ```bash
 # Example: Create 50 UTXOs of 1000 satoshis each
@@ -53,7 +60,9 @@ python anchorforge/main_wallet_setup.py --create-utxolets 1000 50
 **Why this matters:**
 
 * **Concurrency:** Each UTXO can be spent independently. If you have 50 UTXOs, you can anchor 50 events without waiting for the previous transaction to be mined.
-* **Dust Limit:** Ensure your UTXO size is above the "dust limit" (typically 546 satoshis) to ensure they are accepted by miners.
+* **Note:** Confirmation time for blocks can be up to 2 hours in rare cases
+* **Note:** Note, to refill the UTXO store, the monitor can work asynchronously at your own risk.
+* **Dust Limit:** Ensure your UTXO size is above the "dust limit" (on testnet, even 1 is enouth) to ensure they are accepted by miners.
 
 ## 4. Your First Anchor
 
