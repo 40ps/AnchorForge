@@ -6,12 +6,12 @@ This document provides a deep dive into the technical design of AnchorForge v0.2
 
 ## 1. High-Level Design: The "Self-Spend" Concept
 
-AnchorForge is designed for high-frequency, low-cost data anchoring. Instead of relying on a third-party service, the user acts as their own "bank" and "auditor".
+AnchorForge uses transactions as means to register data with the blockchain, but keeps the data local. 
 
 ### Core Principle
-- **Self-Spending:** Every audit record is a transaction sent to the user's own address.
-- **Privacy by Default:** Data can be stored off-chain while only a cryptographic commitment (hash) is anchored on the public ledger.
-- **Independence:** Verification does not require a full node or specialized API permissions, relying instead on Simplified Payment Verification (SPV).
+- **Self-Spending:** Every audit record is enriched with a transaction sent to the user's own address.
+- **Privacy by Default:** Data about the anchoring is stored off-chain while only a cryptographic commitment (hash) and signatures are anchored to the public ledger.
+- **Independence:** Verification does not require API access, relying instead on Simplified Payment Verification (SPV). If blockheaders are cached, it can be done locally completely.
 
 ---
 
@@ -67,3 +67,4 @@ AnchorForge solves the scalability bottleneck of traditional auditing:
 - **Off-Chain Verification:** Since the verification logic is purely mathematical and runs on the client-side, it scales linearly with the number of auditors without taxing the blockchain or a central server.
 - **Minimal Storage:** A verifier only needs the ~300-byte audit record and a header cache (approx. 4MB per year of blockchain history).
 - **Self-Cleaning Wallet:** The "Self-Spend" mechanism allows the user to reuse their funds continuously, requiring only a tiny fraction of BSV for perpetual logging.
+- **Note:** For the PoC, all data records (audit/blockheader etc) are very verbose to be human readable and tell the story.
