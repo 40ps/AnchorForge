@@ -46,7 +46,8 @@ Comprehensive guides are available in the `/docs` directory:
 2. [CLI Tool Manual](docs/cli_manual.md) - Detailed reference for all command-line tools.
 3. [Architecture & Protocol](docs/architecture.md) - Deep dive into the TLV system and SPV logic.
 4. [Protocol Standard v0.2](docs/protocol_standard_v02.md) - Technical byte-level specification.
-5. [Project History](docs/history.md) - Milestones and acknowledgements.
+5. [Project History](docs/history.md) - Milestones.
+6. [Acknowledgements](ACKNOWLEDGEMENTS.md) - Acknowledgements.
 
 ## 🚀 Examples & Stress-Tests
 Check the `/examples` folder for automated logging demonstrations (1 request/3 sec to stay API friendly) :
@@ -55,5 +56,8 @@ Check the `/examples` folder for automated logging demonstrations (1 request/3 s
 - `main_batch_coingecko.py`: Creating verifiable BSV price audit trails.
 *See [Examples Guide](docs/examples.md) for usage details.*
 
+## 👤 Author
+**Wolfgang Lohmann**
+Website/GitHub: https://github.com/40ps"
 ---
 *Developed for educational purposes to demonstrate the power of Bitcoin SV for scalable data integrity.*

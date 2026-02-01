@@ -1,8 +1,15 @@
+# -----------------------------------------------------------------------------
+# Project: AnchorForge v0.2
+# File:    af_verify.py
+# (c)      2025-2026 Wolfgang Lohmann
+# License: MIT
+# -----------------------------------------------------------------------------
+
 # af_verify.py
 """
-V0.1.3 Audit Runner - The flexible and efficient audit tool.
+V0.2 Audit Runner - The flexible and efficient audit tool.
 
-This script loads the audit log file once and uses the V2/3 "manager" 
+This script loads the audit log file once and uses the  "manager" 
 and "worker" functions in audit_core.py to perform granular, 
 user-specified checks.
 
@@ -38,7 +45,7 @@ from anchorforge import core_defs
 from anchorforge import verifier
 # from block_manager import BlockHeaderManager
 
-VIBECODEVERSION=0.6
+VIBECODEVERSION=0.1
 
 
 if hasattr(Config, 'LOG_FILE') and Config.LOG_FILE:
@@ -283,13 +290,13 @@ async def main_audit():
             logger.info(f"Restored ACTIVE_NETWORK_NAME to '{original_network_config}'.")
 
     if not overall_success:
-        logger.error("--- V0.1.3 AUDIT RUN FAILED ---")
+        logger.error("--- V0.2 AUDIT RUN FAILED ---")
         sys.exit(1) # Exit with an error code if any check failed
     else:
-        logger.info("--- V0.1.3 AUDIT RUN PASSED ---")
+        logger.info("--- V0.2 AUDIT RUN PASSED ---")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main_audit())
     except KeyboardInterrupt:
-        logger.info("\n--- V0.1.3 Audit interrupted by user. ---")
+        logger.info("\n--- V0.2 Audit interrupted by user. ---")
