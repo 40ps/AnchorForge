@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------------
+# Project: AnchorForge v0.2
+# File:    block_manager.py
+# (c)      2025-2026 Wolfgang Lohmann
+# License: MIT
+# -----------------------------------------------------------------------------
+
 import json
 from typing import Dict, Any
 import os

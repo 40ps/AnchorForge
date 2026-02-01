@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------------
+# Project: AnchorForge v0.2
+# File:    enrich_and_correct_log_with_tsc_proofs.py
+# (c)      2025-2026 Wolfgang Lohmann
+# License: MIT
+# -----------------------------------------------------------------------------
+
 # enrich_and_correct_log_with_tsc_proofs.py
 """
 This script iterates through the audit log and performs three tasks:

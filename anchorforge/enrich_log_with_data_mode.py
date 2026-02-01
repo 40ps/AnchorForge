@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------------
+# Project: AnchorForge v0.2
+# File:    enrich_log_with_data_mode.py
+# (c)      2025-2026 Wolfgang Lohmann
+# License: MIT
+# -----------------------------------------------------------------------------
+
 # enrich_log_with_data_mode.py
 """
 This script performs a one-time migration on an existing audit log file.

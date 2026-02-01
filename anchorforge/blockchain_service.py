@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------------
+# Project: AnchorForge v0.2
+# File:    blockchain_service.py
+# (c)      2025-2026 Wolfgang Lohmann
+# License: MIT
+# -----------------------------------------------------------------------------
+
 # blockchain_service.py
 # Optimized to store only essential block header data (excluding TX lists).
 

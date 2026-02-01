@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------------
+# Project: AnchorForge v0.2
+# File:    transfer.py
+# (c)      2025-2026 Wolfgang Lohmann
+# License: MIT
+# -----------------------------------------------------------------------------
+
 # could be moved to bank functionls later on
 import logging
 from typing import Optional, Dict, Any, cast
