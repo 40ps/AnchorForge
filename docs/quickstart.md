@@ -101,11 +101,21 @@ python af_monitor.py --duration 10
 
 ### Verify Integrity
 
-Once the monitor marks a record as "confirmed", you can run the verifier logic to check cryptographic signatures and blockchain inclusion (SPV).
+Once the monitor marks a record as "confirmed", you can run the verifier logic to check cryptographic signatures and blockchain inclusion (SPV). The verifier only requires the audit record, the file to check if not embedded, and the list of blockheaders. No further access to blockchain is required.
 
+```bash
+# Verify all ECDSA Hashes and signatures 
+python af_verify.py --log-file output/audit_log_test.json --network test --keyword "health-check" --check-ec-signature --output-file results_health.json
+
+# complete audit incl check for path consistency
+python af_verify.py --log-file output/audit_log_test.json --network test --keyword "legal-doc" --check-tx-consistency --output-file results_legal.json
+
+# Or, if the file has been moved:
+python af_verify.py --log-file audit_log.json --keyword "legal-doc" --data-dir "./archive/" --output-file results.json
+```
 ---
 
 **Next Steps:**
 
-* Explore advanced TLV tagging in the [CLI Manual](docs/cli_manual.md).
+* Explore advanced TLV tagging in the [CLI Manual](cli_manual.md).
 * Learn about the protocol internals in [Architecture](architecture.md).
