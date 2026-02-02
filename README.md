@@ -1,4 +1,4 @@
-# AnchorForge v0.2 (PoC)
+# AnchorForge v0.2 alpha (PoC)
 
 **Scalable, Off-Chain Verifiable Audit Trails on Bitcoin SV**
 
@@ -49,6 +49,17 @@ Comprehensive guides are available in the `/docs` directory:
 5. [Project History](docs/history.md) - Milestones.
 6. [Acknowledgements](ACKNOWLEDGEMENTS.md) - Acknowledgements.
 
+### Configuration
+Copy the template
+```bash
+cp .env.example local_config/.env
+```
+Edit local_config/.env and fill in your values (private keys, URLs, etc)
+
+**Security Note:**
+- Never commit or share local_config/.env
+- it is gitignored by default
+
 ## 🚀 Examples & Stress-Tests
 Check the `/examples` folder for automated logging demonstrations (1 request/3 sec to stay API friendly) :
 - (`af_anchor.py`: Logs single events and provides dedicated main example case)
@@ -57,7 +68,7 @@ Check the `/examples` folder for automated logging demonstrations (1 request/3 s
 *See [Examples Guide](docs/examples.md) for usage details.*
 
 ## 👤 Author
-**Wolfgang Lohmann**
+**Wolfgang Lohmann:**
 Website/GitHub: https://github.com/40ps"
 ---
 *Developed for educational purposes to demonstrate the power of Bitcoin SV for scalable data integrity.*
