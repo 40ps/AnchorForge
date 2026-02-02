@@ -13,7 +13,8 @@ Meanwhile, the vision has become to make this Proof-of-Concept usable and safe e
 ## 2. Milestones
 
 ### Version 0.1 (Legacy)
-- Initial Proof of Concept.
+- Initial Proof of Concept
+- Working name VAI: Verification of AI Integrity
 - Rigid positional data format in OP_RETURN.
 - Basic support for SHA-256 hashing and ECDSA signatures.
 - Local UTXO caching introduced to manage "Self-Spending" transactions.
