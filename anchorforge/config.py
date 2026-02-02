@@ -13,11 +13,31 @@ from typing import Optional
 from dotenv import load_dotenv
 from bsv import Network
 
+import logging
+from importlib.metadata import version, PackageNotFoundError
+
+
 class Config:
     """
     Central Configuration.
     Manages paths, network settings, and secrets.
     """
+
+    # --- central Identity ---
+    PROJECT_NAME = "AnchorForge"
+
+
+    try:
+        __version__ = version("anchorforge")
+    except PackageNotFoundError:
+        # Fallback, falls das Paket nicht installiert ist (z.B. während der Entwicklung)
+        __version__ = "0.2.0-beta-local"
+
+    @classmethod
+    def get_app_header(cls):
+        """returns standardized header for log outputs"""
+        # using cls to ensure to use class variables
+        return f"{cls.PROJECT_NAME} v{cls.__version__}"
     
     # --- PATH SETUP ---
     BASE_DIR = Path(__file__).resolve().parent.parent
@@ -44,6 +64,7 @@ class Config:
     RUNTIME_DIR = BASE_DIR / "runtime"
 
     # Create all directories immediately
+    # TODO better: call explicitely or they are created even in unit tests
     for d in [OUTPUT_DIR, DATABASE_DIR, WALLET_CACHE_DIR, PUBLIC_CACHE_DIR, RUNTIME_DIR]:
         os.makedirs(d, exist_ok=True)
     
@@ -171,3 +192,6 @@ class Config:
         if missing:
             raise ValueError(f"CRITICAL: Missing wallet keys in .env: {', '.join(missing)}. "
                              f"This script requires a configured wallet.")
+        
+# Shortcut for easy access to Version 
+APP_VERSION = Config.__version__

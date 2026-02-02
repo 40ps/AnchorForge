@@ -4,18 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anchorforge"
-version = "0.0.1"
-description = "AnchorForge – BSV transaction tooling and publishing framework"
+version = "0.2.0-beta"
+description = "AnchorForge – BSV timestamping and verification framework"
 readme = "README.md"
 requires-python = ">=3.10"
 
 authors = [
-  { name = "Wolfgang Lohmann", email = "you@example.com" }
+  { name = "Wolfgang Lohmann" }
 ]
 
 license = { text = "MIT" }
 
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
 dependencies = [
+  "cryptography>=45.0.6",
   "aiohttp==3.12.12",
   "python-dotenv==1.1.1",
   "bsv-sdk==1.0.8, <=1.0.11",
@@ -31,10 +38,13 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["anchorforge"]
 
 [tool.setuptools.package-dir]
 "" = "."
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["anchorforge*"]
 
 [tool.setuptools.exclude-package-data]
 anchorforge = ["__pycache__/*"]
