@@ -26,7 +26,7 @@ pip install -e .
 ```
 to let the library be known.
 
-Copy `local_config/.env.template` to `local_config/.env` and fill in your credentials. ENSURE .env (or any file with secrets) is never commited. Ensure .gitignore contains all files with secrets.
+
 
 
 ### Initialize the Environment
@@ -38,10 +38,16 @@ python af_setup_fresh_environment.py
 
 ```
 
-*Note: If a new key is generated, the script will provide a WIF (Private Key). You must add this to your `local_config/.env` file manually.*
+*Note: With default arguments, the script will provide new WIF keys (Private Keys) for testnet and main net, adds them in a local store and into a  `local_config/.env`.*
+
+You can also copy `local_config/.env.template` to `local_config/.env` and fill in your credentials (the standard way). You may need to sync headers and UTXO store for already used keys. 
+
+*Note: Attention with private keys!  ENSURE .env (or any file with secrets) is never commited. Ensure .gitignore contains all files with secrets. Ensure every private key used is stored somewhere in your documents to have access to funds and doc through blockchain.*
+
+*Note: Spending coins can cause tax events. You may want to experiement on testnet.*
 
 ## 3. Funding the "Bank"
-Start with testnet and testnet coins. Configure .env for testnet. DO NOT merge keys/addresses from both networks. Funds can get lost.
+Start with testnet and testnet coins. Configure .env for testnet ("test"). DO NOT merge keys/addresses from both networks. Funds can get lost. Fund testnet addresses with test coins only. Fund mainnet addresses with real coins only.
 
 AnchorForge uses a two-tier wallet system to ensure efficiency and prevent transaction chaining issues:
 
