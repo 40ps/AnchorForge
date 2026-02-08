@@ -7,87 +7,189 @@
 
 import os
 import sys
-import asyncio
-import platform # Added for cross-platform hostname
-from anchorforge.config import Config
-from anchorforge import blockchain_api
-from anchorforge import key_manager # To generate new keys
-from bsv import PrivateKey
+import shutil
+import argparse
+import platform
+from datetime import datetime
 
-# Workaround to enable relative imports if necessary
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# NOTE: We do NOT import Config globally yet,
+# to avoid the "chicken-and-egg problem" (Config needs .env).
 
-async def main():
-    print("--- Initializing Environment for New Machine ---")
-    
-    # 1. Config triggers directory creation
-    # Check for new V2.1 structure attributes, fallback if Config isn't updated yet
-    db_dir = getattr(Config, 'DATABASE_DIR', 'database')
-    wallet_dir = getattr(Config, 'WALLET_CACHE_DIR', getattr(Config, 'CACHE_DIR', 'cache'))
-    public_dir = getattr(Config, 'PUBLIC_CACHE_DIR', 'cache/public')
+def get_paths():
+    """Determines the absolute paths for the setup."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return {
+        "base": base_dir,
+        "local_config": os.path.join(base_dir, "local_config"),
+        "env_example": os.path.join(base_dir, ".env.example"),
+        "target_env": os.path.join(base_dir, "local_config", ".env")
+    }
 
-    print(f"1. Directories checked:")
-    print(f"   - Database: {db_dir}")
-    print(f"   - Wallet Cache: {wallet_dir}")
-    print(f"   - Public Cache: {public_dir}")
+# --- STEP 1: BOOTSTRAP ---
 
-    # --- DECISION: Use existing keys or generate new ones? ---
-    print("\n--- Wallet Configuration ---")
-    if Config.UTXO_STORE_KEY_WIF:
-        print(f"Key found in .env: {Config.UTXO_STORE_KEY_WIF[:10]}...")
-        pk = PrivateKey(Config.UTXO_STORE_KEY_WIF)
-        address = pk.address(network=Config.ACTIVE_NETWORK_BSV)
-        print(f"Address: {address}")
-        
-        print("\nWARNING: If this key is used on other machines concurrently,")
-        print("it may lead to 'Double Spend' errors.")
-        print("For independent development, a unique key per machine is recommended.")
-        
-        # Optional prompt
-        # response = input("Do you want to keep this key? (y/n): ")
+def step1_bootstrap(force=False):
+    """
+    Creates directories and copies .env.example.
+    """
+    paths = get_paths()
+    print("--- STEP 1: Environment Bootstrap ---")
 
+    # 1. Check Source
+    if not os.path.exists(paths["env_example"]):
+        print(f"❌ ERROR: '{paths['env_example']}' missing.")
+        sys.exit(1)
+
+    # 2. Create Directory
+    if not os.path.exists(paths["local_config"]):
+        print(f"📁 Creating directory: {paths['local_config']}")
+        os.makedirs(paths["local_config"])
+
+    # 3. Handle .env
+    if os.path.exists(paths["target_env"]):
+        print(f"ℹ️  .env already exists.")
+        if force:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_name = f".env.backup.{timestamp}"
+            backup_path = os.path.join(paths["local_config"], backup_name)
+            shutil.copy2(paths["target_env"], backup_path)
+            print(f"✅ Backup created: {backup_name}")
+            
+            shutil.copy2(paths["env_example"], paths["target_env"])
+            print(f"✅ .env has been overwritten (Reset).")
+        else:
+            print("   Keeping existing file (Use --force to overwrite).")
     else:
-        print("No key found in .env. Generating new keys...")
+        shutil.copy2(paths["env_example"], paths["target_env"])
+        print(f"✅ .env file created.")
+
+    print("\n👉 NEXT STEPS:")
+    print(f"1. Open: {paths['target_env']}")
+    print("2. Enter your keys (if available) or adjust 'NETWORK'.")
+    print("3. Run: python af_setup_fresh_environment.py --step 2")
+
+# --- STEP 2: CONFIGURE & SYNC ---
+
+def step2_configure():
+    """
+    Loads Config, generates keys (if necessary), and starts sync.
+    """
+    paths = get_paths()
+    
+    # 1. Pre-Check
+    if not os.path.exists(paths["target_env"]):
+        print("❌ ERROR: .env not found.")
+        print("   Please run first: python af_setup_fresh_environment.py --step 1")
+        sys.exit(1)
+
+    print("--- STEP 2: Configuration & Sync ---")
+    print("🔄 Loading AnchorForge Configuration...")
+
+    # Import safely now
+    try:
+        # Ensure path for modules
+        sys.path.append(paths["base"])
+        from anchorforge.config import Config
+        from anchorforge import key_manager
+        from bsv import PrivateKey
+    except ImportError as e:
+        print(f"❌ Import Error: {e}")
+        sys.exit(1)
+
+    # 2. Directory Check (Config creates these automatically on import)
+    print(f"✅ Directories checked (DB: {getattr(Config, 'DATABASE_DIR', 'ok')})")
+
+    # 3. Key Validation logic
+    wif_in_env = Config.PRIVATE_KEY_WIF
+    # Roughly check if default text is still present
+    is_default_key = wif_in_env is None or "put_your_key_here" in wif_in_env or len(wif_in_env) < 10
+
+    address = None
+
+    if not is_default_key:
         try:
-            hostname = platform.node()
-            if not hostname: hostname = "dev_machine"
-        except Exception:
-            hostname = "dev_machine"
+            pk = PrivateKey(wif_in_env)
+            address = pk.address(network=Config.ACTIVE_NETWORK_BSV)
+            print(f"✅ Valid key found.")
+            print(f"   Address: {address}")
+            print(f"   Network: {Config.ACTIVE_NETWORK_NAME}")
+        except Exception as e:
+            print(f"❌ Error reading key from .env: {e}")
+            sys.exit(1)
+    else:
+        print("\n⚠️  No valid key configured.")
+        print("   Generating new key for this setup...")
+        
+        try:
+            hostname = platform.node() or "dev"
+        except: hostname = "dev"
 
         new_key = key_manager.generate_key_pair(
             network_type=Config.ACTIVE_NETWORK_NAME,
-            label=f"dev_machine_{hostname}",
-            comment="Auto-generated by setup_env"
+            label=f"autogen_{hostname}",
+            comment="Step2 Auto-Gen"
         )
-        print("\nNEW KEY GENERATED:")
-        print(f"WIF: {new_key['private_key_wif']}")
-        print(f"Address: {new_key['public_address']}")
-        print("--> Please add this WIF to your .env file now!")
-        return # Abort so user can edit .env
+        address = new_key['public_address']
+        wif = new_key['private_key_wif']
 
-    # 3. Load UTXOs from Blockchain (Full Repair)
-    # Uses the new af_utxo_manager.py tool (assumed to be in root)
-    print("\n3. Loading UTXOs from Blockchain (Full Repair)...")
-    
-    # Check if we should use the new CLI tool name or fallback to library path
-    manager_script = "af_utxo_manager.py"
-    if not os.path.exists(manager_script):
-        # Fallback to internal path if CLI wrapper missing
-        manager_script = os.path.join("anchorforge", "utxo_manager.py")
+        print("\n" + "="*60)
+        print("🔑 NEW KEY GENERATED")
+        print("="*60)
+        print(f"WIF:     {wif}")
+        print(f"Address: {address}")
+        print("="*60)
+        print("🔴 ACTION REQUIRED:")
+        print(f"   Please copy the WIF above NOW into your .env file: {paths['target_env']}")
+        print("   Save the file and press [ENTER] to start sync.")
+        input() # Waits for user confirmation that key is inserted for sync
         
-    if os.path.exists(manager_script):
-        cmd = f"python {manager_script} --address {address} --network {Config.ACTIVE_NETWORK_NAME} full-repair"
-        print(f"Executing: {cmd}")
-        os.system(cmd)
+        # Note: For the following sync we use the variable 'address',
+        # even if the user hasn't saved the key yet,
+        # the sync (public data) will work, but subsequent Txs would fail.
+
+    # 4. Trigger Sync Scripts
+    utxo_script = os.path.join(paths["base"], "af_utxo_manager.py")
+    sync_script = os.path.join(paths["base"], "af_sync.py")
+
+    print(f"\n🚀 Starting Initial Sync for {address} ({Config.ACTIVE_NETWORK_NAME})...")
+
+    if os.path.exists(utxo_script) and os.path.exists(sync_script):
+        # UTXO Repair
+        cmd_utxo = f"{sys.executable} {utxo_script} full-repair --address {address} --network {Config.ACTIVE_NETWORK_NAME}"
+        print(f"   > {cmd_utxo}")
+        ret1 = os.system(cmd_utxo)
+        
+        # Header Sync
+        cmd_sync = f"{sys.executable} {sync_script} --last 2000 --network {Config.ACTIVE_NETWORK_NAME}"
+        print(f"   > {cmd_sync}")
+        ret2 = os.system(cmd_sync)
+
+        if ret1 == 0 and ret2 == 0:
+            print("\n✅ Setup successfully completed.")
+        else:
+            print("\n⚠️  Warning: One or more sync scripts had errors.")
     else:
-        print(f"⚠️ Warning: UTXO Manager script not found at {manager_script}. Skipping initial sync.")
+        print("❌ CLI tools not found. Setup incomplete.")
 
-    # 4. Header Sync
-    print("\n4. Synchronizing Block Headers...")
-    cmd_sync = f"python af_sync.py --last 2000 --network {Config.ACTIVE_NETWORK_NAME}"
-    os.system(cmd_sync)
+def main():
+    parser = argparse.ArgumentParser(description="AnchorForge Environment Setup Tool")
+    
+    parser.add_argument("--step", type=int, choices=[1, 2], required=True,
+                        help="Step 1: Bootstrap .env files / Step 2: Validate Keys & Sync")
+    
+    parser.add_argument("--force", action="store_true",
+                        help="Step 1: Overwrite existing .env (creates backup)")
 
-    print("\n--- Setup complete. You can now start developing. ---")
+    args = parser.parse_args()
+
+    if args.step == 1:
+        step1_bootstrap(force=args.force)
+    elif args.step == 2:
+        # Here we use asyncio.run if async is used internally (optional)
+        import asyncio
+        asyncio.run(async_wrapper_step2())
+
+async def async_wrapper_step2():
+    step2_configure()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
