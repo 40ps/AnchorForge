@@ -11,6 +11,7 @@ import shutil
 import argparse
 import platform
 import re
+import time
 from datetime import datetime
 
 # NOTE: We do NOT import Config globally yet,
@@ -109,7 +110,7 @@ def step1_bootstrap(force=False, use_defaults=False):
     Creates directories, intelligently merges .env.example with defaults.
     """
     paths = get_paths()
-    print("--- STEP 1: Environment Bootstrap ---")
+    print("\n--- STEP 1: Environment Bootstrap ---")
 
     # 1. Check Source
     if not os.path.exists(paths["env_example"]):
@@ -130,9 +131,8 @@ def step1_bootstrap(force=False, use_defaults=False):
     # Check if target exists
     if os.path.exists(paths["target_env"]) and not force:
         print(f"ℹ️  .env already exists.")
-        print("   Keeping existing file (Use --force to overwrite).")
         if use_defaults:
-            print("⚠️  Warning: --defaults ignored because file exists and --force was not used.")
+            print("   Using existing file (ignoring --defaults since file exists).")
         return
 
     # Logic for overwriting or creating new
@@ -172,11 +172,6 @@ def step1_bootstrap(force=False, use_defaults=False):
         print(f"❌ Error writing .env: {e}")
         sys.exit(1)
 
-    print("\n👉 NEXT STEPS:")
-    print(f"1. Open: {paths['target_env']}")
-    print("2. Enter your keys (The script generated defaults, but YOU need to add secrets).")
-    print("3. Run: python af_setup_fresh_environment.py --step 2")
-
 # --- STEP 2: CONFIGURE & SYNC ---
 
 def is_placeholder_key(val):
@@ -189,9 +184,14 @@ def is_placeholder_key(val):
 def generate_keys_for_network(network_name, hostname, key_manager):
     """Generates a key pair for a specific network."""
     print(f"   Generating new {network_name.upper()} Key...")
+    
+    # We add a timestamp to the label to ensure unique entries in the keystore
+    # even if the setup runs multiple times.
+    ts = int(time.time())
+    
     new_key = key_manager.generate_key_pair(
         network_type=network_name,
-        label=f"autogen_{network_name}_{hostname}",
+        label=f"autogen_{network_name}_{hostname}_{ts}",
         comment=f"Step2 Auto-Gen ({network_name})"
     )
     return new_key['private_key_wif'], new_key['public_address']
@@ -209,7 +209,7 @@ def step2_configure():
         print("   Please run first: python af_setup_fresh_environment.py --step 1")
         sys.exit(1)
 
-    print("--- STEP 2: Configuration & Sync ---")
+    print("\n--- STEP 2: Configuration & Sync ---")
     print("🔄 Loading AnchorForge Configuration...")
 
     try:
@@ -338,21 +338,32 @@ def step2_configure():
 def main():
     parser = argparse.ArgumentParser(description="AnchorForge Environment Setup Tool")
     
-    parser.add_argument("--step", type=int, choices=[1, 2], required=True,
-                        help="Step 1: Bootstrap .env files / Step 2: Validate Keys & Sync")
+    parser.add_argument("--step", type=int, choices=[1, 2], required=False,
+                        help="Optional: Run specific step (1=Bootstrap, 2=Sync). If omitted, runs both.")
     
     parser.add_argument("--force", action="store_true",
                         help="Step 1: Overwrite existing .env (creates backup)")
 
     parser.add_argument("--defaults", action="store_true",
-                        help="Step 1: Apply standard default configuration and resolve conflicts in .env")
+                        help="Step 1: Force using defaults (auto-enabled if no step provided)")
 
     args = parser.parse_args()
 
+    # FULL AUTO MODE (No step provided)
+    if args.step is None:
+        print("🚀 Running FULL AUTOMATED SETUP...")
+        # In Auto Mode, we always assume defaults unless the file exists
+        step1_bootstrap(force=args.force, use_defaults=True)
+        
+        # Async wrapper for step 2
+        import asyncio
+        asyncio.run(async_wrapper_step2())
+        return
+
+    # MANUAL STEP MODE
     if args.step == 1:
         step1_bootstrap(force=args.force, use_defaults=args.defaults)
     elif args.step == 2:
-        # Here we use asyncio.run if async is used internally (optional)
         import asyncio
         asyncio.run(async_wrapper_step2())
 
