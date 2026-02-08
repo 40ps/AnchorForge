@@ -14,15 +14,20 @@ First, clone the repository and install the required dependencies:
 ```bash
 git clone [https://github.com/](https://github.com/)40ps/AnchorForge.git
 cd AnchorForge
+python3 -m venv venv
+source venv/bin/active  # or the window equivalent
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
-Copy `local_config/.env.template` to `local_config/.env` and fill in your credentials. ENSURE .env (or any file with secrets) is never commited. Ensure .gitignore contains all files with secrets.
 
 You might need
 ```bash
 pip install -e .
 ```
 to let the library be known.
+
+Copy `local_config/.env.template` to `local_config/.env` and fill in your credentials. ENSURE .env (or any file with secrets) is never commited. Ensure .gitignore contains all files with secrets.
+
 
 ### Initialize the Environment
 
