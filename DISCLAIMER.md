@@ -18,7 +18,7 @@ Digital currency transactions, including the payment of network fees and "self-s
 ## 4. No Liability and MIT License
 AnchorForge is licensed under the MIT License. 
 * **"As Is" Basis:** The software is provided "as is", without warranty of any kind, express or implied.
-* **Disclaimer of Liability:** In no event shall the author or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
+* **Disclaimer of Liability:** In no event shall the author or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software. Do not use this software for any illegal activities, do not post illegal content.
 
 ## 5. Use at Your Own Risk
 By using this software, you acknowledge that you understand the risks associated with blockchain technology, private key management, and experimental software. You agree that you are using AnchorForge entirely at your own risk.

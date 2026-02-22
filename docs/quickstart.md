@@ -15,18 +15,13 @@ First, clone the repository and install the required dependencies:
 git clone [https://github.com/](https://github.com/)40ps/AnchorForge.git
 cd AnchorForge
 python3 -m venv venv
-source venv/bin/active  # or the window equivalent
+source venv/bin/active  # or the OS equivalent .\venv\Scripts\Activate.ps1 
 pip install --upgrade pip
-pip install -r requirements.txt
+
+pip install -r requirements.txt  # get the base libraries used
+
+pip install -e .   # to access the local anchorforge library
 ```
-
-You might need
-```bash
-pip install -e .
-```
-to let the library be known.
-
-
 
 
 ### Initialize the Environment
@@ -47,7 +42,10 @@ You can also copy `local_config/.env.template` to `local_config/.env` and fill i
 *Note: Spending coins can cause tax events. You may want to experiement on testnet.*
 
 ## 3. Funding the "Bank"
-Start with testnet and testnet coins. Configure .env for testnet ("test"). DO NOT merge keys/addresses from both networks. Funds can get lost. Fund testnet addresses with test coins only. Fund mainnet addresses with real coins only.
+Start with testnet and testnet coins. Configure .env for testnet ("test"). 
+It is a good style to return testnet coins to the faucet if no longer needed.
+
+*Note:* DO NOT merge keys/addresses from both networks. Funds can get lost. Fund testnet addresses with test coins only. Fund mainnet addresses with real coins only.
 
 AnchorForge uses a two-tier wallet system to ensure efficiency and prevent transaction chaining issues:
 
@@ -70,10 +68,11 @@ python anchorforge/main_wallet_setup.py --create-utxolets 1000 50
 
 **Why this matters:**
 
-* **Concurrency:** Each UTXO can be spent independently. If you have 50 UTXOs, you can anchor 50 events without waiting for the previous transaction to be mined.
+* **Concurrency:** Each UTXO can be spent independently. If you have 50 UTXOs, you can anchor 50 events without waiting for the previous transaction to be mined. The system run fine with 2000 UTXOs. More may reduce speed, this is a PoC with an ad hoc implementation.
 * **Note:** Confirmation time for blocks can be up to 2 hours in rare cases
 * **Note:** Note, to refill the UTXO store, the monitor can work asynchronously at your own risk.
 * **Dust Limit:** Ensure your UTXO size is above the "dust limit" (on testnet, even 1 is enouth) to ensure they are accepted by miners.
+
 
 ## 4. Your First Anchor
 

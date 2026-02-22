@@ -9,6 +9,7 @@ The development of AnchorForge was shaped by the contributions and insights of s
 * **Bryan Daugherty:** For demonstrating how to apply blockchain **timestamping to AI integrity**.
 * **Gregory Ward:** For providing continuous inspiration.
 * **CertiHash (certihash.com):** For showcasing a prime use case of enterprise timestamping.
+  **TimeSeal** (Vaionex):** Timestamping for data base entries
 * **mintBlue (mintBlue.com):** For the practical perspective on CSRD reporting.
 * **Meysam Rezaei (timestamped.io):** For the crucial hint to include digital signing in the architecture.
 

@@ -32,6 +32,7 @@ see (ACKNOWLEDGEMENTS.md) for actual acknowledgements. As this is the first publ
 ## 4. Future Features
 This is a tiny side project that I want to use for presentations. However, it grew, and maybe some features are worth to be introduced. Among the things approached may be
 - tests (yes, yes)
+- RFC-Standard (RFC 8785: JSON Canonicalization Scheme - JCS) How to sort and format before hashing JSON (super Feature for v0.3?)
 - Single Audit Record creation
 - separation of logs
 - separation of env-IO
