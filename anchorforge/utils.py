@@ -71,7 +71,7 @@ def get_content_from_source(source: str | None) -> str | None:
 
     if file_path:
         try:
-            with open(source, 'r', encoding='utf-8') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 return f.read()
         except Exception as e:
             # Using logger if available, otherwise print
