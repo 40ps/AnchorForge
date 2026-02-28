@@ -121,10 +121,8 @@ def _build_payloads(
                 if os.path.exists(content_str):
                     # Safety Check: Check for size)
                     
-                    # TODO include into config or core_defs
-                    ONCHAIN_DATA_SIZE_LIMIT = 4096
                     file_size = os.path.getsize(content_str)
-                    if file_size > ONCHAIN_DATA_SIZE_LIMIT: 
+                    if file_size > Config.ONCHAIN_DATA_SIZE_LIMIT: 
                         logger.warning(f"  Skipping DATA inclusion: File too large ({file_size} bytes).")
                     else:
                         with open(content_str, 'rb') as f:
