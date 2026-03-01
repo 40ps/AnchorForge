@@ -9,6 +9,7 @@
 '''
 Logic for VERIFYING and MONITORING audit records.
 Contains: Payload verification, SPV proofs
+If blockheader file does not contain
 '''
 
 #import asyncio
@@ -25,6 +26,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.backends import default_backend
+
+from anchorforge.blockchain_service import _minimize_header_data
 
 
 
@@ -245,12 +248,14 @@ async def _verify_spv_proof(
         live_block_header = local_block_headers[block_hash]
     else:
         logger.info(f"  Block Header for '{block_hash}' (height {block_height}) NOT in cache. Fetching LIVE.")
-        live_block_header = await blockchain_api.get_block_header(block_hash)
-        if live_block_header:
+        full_live_block_header = await blockchain_api.get_block_header(block_hash)
+        if full_live_block_header:
+            live_block_header = _minimize_header_data(full_live_block_header)
             header_manager.headers[block_hash] = live_block_header
             header_manager.save()
-            logger.info(f"  Live Block Header for '{block_hash}' fetched and cached.")
-
+            logger.info(f"  Live minimal Block Header for '{block_hash}' fetched and cached.")
+        else:
+            live_block_header = None
     if not live_block_header:
         logger.error(f"  SPV Proof: FAIL. Could not fetch or find block header for block '{block_hash}'.")
         return False
