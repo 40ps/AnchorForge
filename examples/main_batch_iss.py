@@ -65,6 +65,9 @@ VERSION=0.2
 # Default transaction note embedded in the code
 DEFAULT_TX_NOTE = """SPV-based Off-Chain Data Verification
 This tx is part of a series demonstrating scalable, off-chain verifiable audit trails anchored to the blockchain.
+Genesis Tx 1 (Concept): 41bd1084bb877acb31df59f76c10adeba98e3c399e6c7a6a48a9f9282786dc33
+Genesis Tx 2 (Example): 603352ed7ebe5f557cb4ec447991a5c5acb0a275fb77ea50cdef4508521e85a8
+
 Data Source: api.wheretheiss.at (ISS Location)
 Keyword: iss-location-002
 PoC: github.com/40ps/AnchorForge
