@@ -5,8 +5,11 @@
 local_config/.env
 local_config/.env.*.bak
 local_config/.env.py
+local_config/.env*
 local_config/Keystore/
+local_config/Keystore/bu/
 local_config/*.json
+
 
 # Important: Secure specific key files
 key_pairs.json
