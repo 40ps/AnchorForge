@@ -57,7 +57,7 @@ logging.basicConfig(
 )
 
 #  --- CONSTANTS ---
-DEFAULT_KEYWORD = "coingecko-001"
+DEFAULT_KEYWORD = "coingecko-002"
 PROCESS_NAME = "coingecko"
 
 # Move batch status file to runtime directory
@@ -77,10 +77,15 @@ DELAY_NEXT_REQUEST = 10
 
 DEFAULT_TX_NOTE = """**SPV-based Off-Chain Data Verification**
 This tx is part of a series demonstrating scalable, off-chain verifiable audit trails anchored to the blockchain. A verifier only needs an Integrity Record and a local cache of block headers.
-Keyword: coingecko-001
+Keyword: coingecko-002
 
 **Description**
 Is contained as OP_RETURN payload of genesis txs
+Spending Tx (provides UTXOs): 6b8d4469e592fa0908d13ff2032886c4be62872316a53b587b7b533f214c83ae
+Genesis Tx 1 (Concept): 41bd1084bb877acb31df59f76c10adeba98e3c399e6c7a6a48a9f9282786dc33
+Genesis Tx 2 (Example): 603352ed7ebe5f557cb4ec447991a5c5acb0a275fb77ea50cdef4508521e85a8
+
+*History: v0.1:*
 Spending Tx (provides UTXOs): e98aa51c3d2de8041719c32079d1a8ada3d8160137f5d2655ad67d0ef1f2fe2b
 Genesis Tx 1 (Concept): 5cd8197616fab4a6579ccdd3a782e229c84c0238975aefdb3ea1007a8b1ef6c8
 Genesis Tx 2 (Example): 9bd554b491aeafc64e9693cd69880225aea17f44e39507000378252d091661da
@@ -142,7 +147,10 @@ async def process_single_coingecko_event(
         tx_note=tx_note,
         keyword=keyword,
         dry_run=dry_run,
-        no_broadcast=False # Batch script usually implies broadcasting, unless dry-run is set
+        no_broadcast=False, # Batch script usually implies broadcasting, unless dry-run is set
+        payload_options={"include_ec": True,
+                          "include_x509": False, 
+                          "include_data": False}
     )
 
 

@@ -60,17 +60,17 @@ logging.basicConfig(
 )
 
 # --- CONSTANTS specific to this script ---
-VERSION=0.1
+VERSION=0.2
 
 # Default transaction note embedded in the code
 DEFAULT_TX_NOTE = """SPV-based Off-Chain Data Verification
 This tx is part of a series demonstrating scalable, off-chain verifiable audit trails anchored to the blockchain.
 Data Source: api.wheretheiss.at (ISS Location)
-Keyword: iss-location-001
+Keyword: iss-location-002
 PoC: github.com/40ps/AnchorForge
 """
 # Default keyword for audit records created by this script
-DEFAULT_KEYWORD = "iss-location-001"
+DEFAULT_KEYWORD = "iss-location-002"
 # Process name for pause/stop controls
 PROCESS_NAME = "iss"
 
@@ -143,7 +143,10 @@ async def process_single_iss_location_event(
         tx_note=tx_note,
         keyword=keyword,
         dry_run=dry_run,
-        no_broadcast=no_broadcast
+        no_broadcast=no_broadcast,
+        payload_options={"include_ec": True,
+                          "include_x509": False, 
+                          "include_data": True}
     )
 
 # --- main function to control the batch ---
