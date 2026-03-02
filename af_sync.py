@@ -15,10 +15,11 @@ Flexible Block Header Synchronization Tool.
 
 Features:
 - Sync from network (Last N, Range, List)
-- Minimize storage (--minimal-info)
+- Minimize storage (--minimal-info) NOTE: verification of blocks no longer possible
+- With Tx-IDs 
 - Custom output file (--output)
 - Network override (--network)
-- Convert existing files (--convert)
+- Convert existing files (--convert) NOTE: keeps 80byte relevant, removes TxIDs)
 
 It can be controlled via command-line arguments to sync:
 - The last N blocks: --last <N>
