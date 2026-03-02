@@ -46,6 +46,8 @@ genesis_info/
 old_logs/
 audit_log_main/
 
+tools/
+
 # --- Python & IDEs ---
 venv/
 .venv/
