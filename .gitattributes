@@ -1,3 +1,4 @@
 # *.md -text
 genesis_artifacts/01_genesis_v02_concept.md -text
 genesis_artifacts/01_record_v02_explanation.md -text
+genesis_artifacts/* -text
