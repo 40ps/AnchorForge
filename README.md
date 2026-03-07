@@ -16,7 +16,11 @@ This project is an early-stage Proof of Concept. It is **not** professional or p
 AnchorForge protocol v0.2 was started Jan 2026. First transaction originate 2025. You can inspect them on any BSV block explorer:
 
 ### Bitcoin SV Mainnet
-- **Genesis Address:** `1Z3YVKKVQeE9jDgvdNgiLgTizdC7iqypa`
+## v0.2
+- **Genesis Address:** `1C5TbM266MoCZyKBkHF6nVRihqzZW3iTA8`
+- **First Anchor TX:** `41bd1084bb877acb31df59f76c10adeba98e3c399e6c7a6a48a9f9282786dc33`
+## v0.1
+- **Genesis Address:** `1Z3YVKKVQeE9jDgvdNgiLgTizdC7iqypa`(7200 tx)
 - **First Anchor TX:** `5cd8197616fab4a6579ccdd3a782e229c84c0238975aefdb3ea1007a8b1ef6c8`
 
 ### Bitcoin SV Testnet
