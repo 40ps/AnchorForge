@@ -548,7 +548,7 @@ async def audit_records_runner(
     alt_file_reference: Optional[str] = None
 ) -> bool:
     """
-    Manages the V0.1.3 verification process.
+    Manages the V0.2 verification process.
     
     This function loads necessary resources (like the block header cache) once,
     filters the records based on user input, and dispatches them to the
@@ -563,7 +563,7 @@ async def audit_records_runner(
     Returns:
         bool: True if all verified records passed, False if any failed.
     """
-    logger.info("--- V0.1.3 Audit Runner Started ---")
+    logger.info("--- V0.2 Audit Runner Started ---")
     
     valid_keys = {
        "check_ec_hash", "check_ec_signature",
