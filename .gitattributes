@@ -1,4 +1,41 @@
-# *.md -text
-genesis_artifacts/01_genesis_v02_concept.md -text
-genesis_artifacts/01_record_v02_explanation.md -text
-genesis_artifacts/* -text
+# 1. Global defaults
+# Automatically detect text files and normalize them to LF in the repo.
+* text=auto
+
+# 2. Genesis Artifacts - The "Deep Freeze"
+# We treat the entire directory as binary to ensure bit-for-bit integrity.
+# This covers .md, .json, .log and any other files inside.
+# Note: Some examples (may) need integrity to work as example for integrity proof
+genesis_artifacts/** binary
+
+# N.B. -text may exclude specific text files from being treated as text.
+# -text would ensure, sha256sum will always give the same result.
+# to keep the files diff-able but stop normalization:
+# specific_file.md -text
+# In our case, lets use binary, it is even more safe.
+
+
+# 3. Standard JSON Handling
+# Ensure JSON files are normalized but remain diffable in the rest of the project.
+*.json text
+
+# 4. Standard Log Handling
+# Usually logs are gitignored, but if tracked, treat as text.
+*.log text
+
+# 5. Python source files
+# Ensure they are handled as text for clean cross-platform collaboration.
+*.py text
+
+# 6. Documentation (outside of genesis_artifacts)
+*.md text
+
+# 5. Shell scripts
+# Force LF so they remain executable on Linux/Unix systems.
+*.sh text eol=lf
+
+# 6. Actual binary files
+*.png binary
+*.jpg binary
+*.pdf binary
+*.pyc binary
