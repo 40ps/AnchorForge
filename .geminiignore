@@ -1,0 +1,11 @@
+# Gemini CLI Ignore - Schützt Secrets und private Daten vor dem KI-Kontext
+local_config/
+.env
+*.pem
+*.wif
+*.json
+database/
+cache/
+output/
+runtime/
+audit_log_main/
