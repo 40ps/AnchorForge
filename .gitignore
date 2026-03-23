@@ -70,4 +70,4 @@ Remarks-bsv-sdk.txt
 
 # --- Project Specific ---
 Doc/
-tests/
+mytests/
