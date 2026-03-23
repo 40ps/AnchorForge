@@ -295,8 +295,12 @@ async def main_audit():
     else:
         logger.info("--- V0.2 AUDIT RUN PASSED ---")
 
-if __name__ == "__main__":
+def main_entry():
+    """Entry point for the af-verify command."""
     try:
         asyncio.run(main_audit())
     except KeyboardInterrupt:
         logger.info("\n--- V0.2 Audit interrupted by user. ---")
+
+if __name__ == "__main__":
+    main_entry()

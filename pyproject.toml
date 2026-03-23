@@ -24,6 +24,9 @@ classifiers = [
 dependencies = [
   "cryptography>=45.0.6",
   "aiohttp==3.12.12",
+  "httpx>=0.27.0",
+  "portalocker>=2.8.2",
+  "base58>=2.1.1",
   "python-dotenv==1.1.1",
   "bsv-sdk==1.0.8, <=1.0.11",
 ]
@@ -42,9 +45,15 @@ dev = [
 [tool.setuptools.package-dir]
 "" = "."
 
+[project.scripts]
+af-anchor = "af_anchor:main_entry"
+af-verify = "af_verify:main_entry"
+af-sync = "af_sync:main_entry"
+af-monitor = "af_monitor:main_entry"
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["anchorforge*"]
+include = ["anchorforge*", "af_*"]
 
 [tool.setuptools.exclude-package-data]
 anchorforge = ["__pycache__/*"]

@@ -99,9 +99,10 @@ async def main_monitor(duration_minutes: int | None):
         
     logging.info("\n--- Audit Monitor has been stopped. ---")
 
-if __name__ == "__main__":
+def main_entry():
+    """Entry point for the af-monitor command."""
     Config.validate_wallet_config()
-    
+
     parser = argparse.ArgumentParser(description="Run the Audit Monitor.")
     parser.add_argument(
         '-d', '--duration', 
@@ -114,3 +115,6 @@ if __name__ == "__main__":
         asyncio.run(main_monitor(args.duration))
     except KeyboardInterrupt:
         logging.info("\n--- Audit Monitor stopped by user (Ctrl+C). ---")
+
+if __name__ == "__main__":
+    main_entry()

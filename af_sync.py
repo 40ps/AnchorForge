@@ -260,5 +260,12 @@ async def main_sync_headers():
   
 
 
+def main_entry():
+    """Entry point for the af-sync command."""
+    try:
+        asyncio.run(main_sync_headers())
+    except KeyboardInterrupt:
+        logger.info("\nInterrupted by user.")
+
 if __name__ == "__main__":
-    asyncio.run(main_sync_headers())
+    main_entry()

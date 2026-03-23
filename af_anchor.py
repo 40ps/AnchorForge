@@ -163,5 +163,12 @@ async def main():
             payload_options=payload_opts
         )
 
+def main_entry():
+    """Entry point for the af-anchor command."""
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main_entry()
