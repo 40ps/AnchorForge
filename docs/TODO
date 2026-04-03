@@ -1,1 +1,2 @@
 - audit_record_specification_with_examples.md
+- [Refactor] Standardize `publisher.py` Return Types: Ensure `build_audit_payload_prehashed` returns a strict `List[bytes]`. Currently, it returns a `bsv.Signature` object, which works because the SDK handles serialization later, but it violates the type hint and makes the library less predictable for external callers.
