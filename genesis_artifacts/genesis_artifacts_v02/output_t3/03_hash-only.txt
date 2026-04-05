@@ -1,0 +1,173 @@
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> python af_anchor.py --data "Hash-only example" --include hash --transaction-note="Example tx, hash only, keyword 'hash-only'" --keyword "hash-only" --mainnet
+AnchorForge 0.2.0b0 (network=main)
+2026-03-05 13:55:57,609 - INFO - Received data (mode: embedded)
+2026-03-05 13:55:57,613 - INFO - Received audit record note: None
+2026-03-05 13:55:57,613 - INFO - Received audit tx note: Example tx, hash only, keyword 'hash-only'
+2026-03-05 13:55:57,614 - INFO - --- Service: Logging Audit Event (Mode: embedded) ---      
+G:\Meine Ablage\Documents\Blockchain\AnchorForge\.venv\Lib\site-packages\portalocker\utils.py:231: UserWarning: timeout has no effect in blocking mode
+  warnings.warn(
+2026-03-05 13:55:57,682 - INFO -   v0.2 Payload: Skipped EC Signature (requested via options).
+2026-03-05 13:55:57,683 - INFO -   v0.2 Payload: Skipped X.509 Certificate (requested via options).
+2026-03-05 13:55:57,683 - INFO -
+--- Creating OP_RETURN Transaction from 1C5TbM266MoCZyKBkHF6nVRihqzZW3iTA8 ---
+2026-03-05 13:55:57,684 - INFO - OP_RETURN script (Hex): 006a01f010416e63686f72466f7267652076302e32014821003723c6d1962a6c3df6b02b5fdde957c11c469c7a1d71aa9a6e55e0c2e7be08e2014e2a4578616d706c652074782c2068617368206f6e6c792c206b6579776f72642027686173682d6f6e6c7927
+2026-03-05 13:55:57,684 - INFO -
+--- OP_RETURN ScriptPubkey Details ---
+2026-03-05 13:55:57,684 - INFO - Full Script (Hex): 006a01f010416e63686f72466f7267652076302e32014821003723c6d1962a6c3df6b02b5fdde957c11c469c7a1d71aa9a6e55e0c2e7be08e2014e2a4578616d706c652074782c2068617368206f6e6c792c206b6579776f72642027686173682d6f6e6c7927
+2026-03-05 13:55:57,685 - INFO - Full Script (ASM): OP_0 OP_RETURN f0 416e63686f72466f7267652076302e32 48 003723c6d1962a6c3df6b02b5fdde957c11c469c7a1d71aa9a6e55e0c2e7be08e2 4e 4578616d706c652074782c2068617368206f6e6c792c206b6579776f72642027686173682d6f6e6c7927
+2026-03-05 13:55:57,685 - INFO - Detected 'Safe' OP_RETURN (OP_FALSE OP_RETURN).
+2026-03-05 13:55:57,686 - INFO - OP_RETURN Data Elements:
+2026-03-05 13:55:57,686 - INFO -   Element 1: (Raw Hex) f0 (Length: 1 bytes)
+2026-03-05 13:55:57,686 - INFO -   Element 2: (Text) 'AnchorForge v0.2' (Hex: 416e63686f72466f7267652076302e32)
+2026-03-05 13:55:57,687 - INFO -   Element 3: (Text) 'H' (Hex: 48)
+2026-03-05 13:55:57,687 - INFO -   Element 4: (Raw Hex) 003723c6d1962a6c3df6b02b5fdde957c11c469c7a1d71aa9a6e55e0c2e7be08e2 (Length: 33 bytes)
+2026-03-05 13:55:57,687 - INFO -   Element 5: (Text) 'N' (Hex: 4e)
+2026-03-05 13:55:57,688 - INFO -   Element 6: (Text) 'Example tx, hash only, keyword 'hash-only'' (Hex: 4578616d706c652074782c2068617368206f6e6c792c206b6579776f72642027686173682d6f6e6c7927)
+2026-03-05 13:55:57,702 - INFO -   Attempting to create transaction for content: 'Hash-only example'
+2026-03-05 13:55:57,703 - INFO -
+--- DEBUG: Transaction Outputs IMMEDIATELY after assembly ---
+2026-03-05 13:55:57,703 - INFO -     Output 0: Satoshis=0, Script ASM=OP_0 OP_RETURN f0 416e63686f72466f7267652076302e32 48 003723c6d1962a6c3df6b02b5fdde957c11c469c7a1d71aa9a6e55e0c2e7be08e2 4e 4578616d706c652074782c2068617368206f6e6c792c206b6579776f72642027686173682d6f6e6c7927
+2026-03-05 13:55:57,704 - INFO -     Output 1: Satoshis=1, Script ASM=OP_DUP OP_HASH160 79813ed80c6535ea243a92271a0a1a207c592228 OP_EQUALVERIFY OP_CHECKSIG
+2026-03-05 13:55:57,704 - INFO - ------------------------------------------------------------
+2026-03-05 13:55:57,704 - INFO - Total Input Satoshis: 14650
+2026-03-05 13:55:57,705 - INFO - Total Output Satoshis (including OP_RETURN and change): 14619
+2026-03-05 13:55:57,705 - INFO - Calculated Fee for new transaction: 31 satoshis
+2026-03-05 13:55:57,706 - INFO - New Transaction ID: d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b
+2026-03-05 13:55:57,706 - INFO - New Transaction Raw Hex: 0100000001ae834c213f537b7b583ba516238762bec4862803f23fd10809fa92e569448d6b020000006b483045022100af784f1a19f3a1a29f0b28a88f6138784882f45361a00867313c7c6d6463dd11022044e434e63a891ab4a42086b9d5d86a0d4de249006b6215772e5d46be48ef75fc41210354601a2b7d56ac7d32b6354140b1258a41f39feb1715a3d697d20d6206b71fb6ffffffff02000000000000000066006a01f010416e63686f72466f7267652076302e32014821003723c6d1962a6c3df6b02b5fdde957c11c469c7a1d71aa9a6e55e0c2e7be08e2014e2a4578616d706c652074782c2068617368206f6e6c792c206b6579776f72642027686173682d6f6e6c79271b390000000000001976a91479813ed80c6535ea243a92271a0a1a207c59222888ac00000000
+2026-03-05 13:55:57,706 - INFO - Adding raw transaction d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b to tx_store (UTXO cache)...
+2026-03-05 13:55:57,707 - INFO - [API Rate] Calls in last 60s: 1. Avg Rate: 1.00 calls/min. 
+2026-03-05 13:55:57,707 - INFO - --- Broadcasting Transaction to https://api.whatsonchain.com/v1/bsv/main/tx/raw ---
+2026-03-05 13:55:57,896 - INFO - HTTP Status Code: 200
+2026-03-05 13:55:57,897 - INFO - Success: Transaction broadcasted with txid: d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b
+2026-03-05 13:55:57,900 - INFO - --- End of create_op_return_transaction ---
+2026-03-05 13:55:57,954 - INFO - Success. Logged Event c1b9e79b-3701-4305-a20b-6fa92e40b15d. TXID: d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> 
+
+
+
+----
+
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> python .\af_monitor.py -d 1
+2026-03-05 15:52:40,411 - INFO - 
+--- Starting Audit Monitor in DURATION mode for 1 minutes ---
+2026-03-05 15:52:40,415 - INFO - 
+--- Starting Transaction Confirmation Monitor (polling every 30s) ---
+G:\Meine Ablage\Documents\Blockchain\AnchorForge\.venv\Lib\site-packages\portalocker\utils.py:231: UserWarning: timeout has no effect in blocking mode
+2026-03-05 15:52:40,466 - INFO -   Checking confirmation for audit record 'c1b9e79b-3701-4305-a20b-6fa92e40b15d' (TXID: d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b)...
+2026-03-05 15:52:40,466 - INFO - [API Rate] Calls in last 60s: 1. Avg Rate: 1.00 calls/min.
+2026-03-05 15:52:40,467 - INFO - Monitor: Attempting to get status for txid d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b from URL: https://api.whatsonchain.com/v1/bsv/main/tx/d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b
+2026-03-05 15:52:40,615 - INFO - Monitor: Successfully received status 200 for txid d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b.
+2026-03-05 15:52:41,620 - INFO -     Audit record 'c1b9e79b-3701-4305-a20b-6fa92e40b15d' (TXID d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b) confirmed in block 939026 (0000000000000000088e1e289414ac95a97a3798d2f173625edc8234cbc4c1ef).
+2026-03-05 15:52:41,622 - INFO - [API Rate] Calls in last 60s: 2. Avg Rate: 2.00 calls/min.
+2026-03-05 15:52:42,745 - INFO -     Added TSC proof for c1b9e79b-3701-4305-a20b-6fa92e40b15d (Size: 724 bytes).        
+2026-03-05 15:52:42,788 - INFO -     Updated height for 1 UTXO(s) from TXID d2238b8c2dc896776ac8de207b0ca806119048cb1251850959724728233e6b8b in local UTXO store.
+2026-03-05 15:52:42,788 - INFO -     Successfully confirmed and updated record 'c1b9e79b-3701-4305-a20b-6fa92e40b15d'.  
+2026-03-05 15:52:42,820 - INFO - [API Rate] Calls in last 60s: 3. Avg Rate: 3.00 calls/min.
+2026-03-05 15:52:42,931 - INFO -   Initial run completed. Now monitoring for new blocks starting from height 939043.    
+2026-03-05 15:52:42,931 - INFO -   ... sleeping for 30 seconds.
+
+
+-----
+
+python af_verify.py  --log-file output/audit_log_main.json  --output-file output/audit_log_main_t3_verified.json --keyword "hash-only" --check-tx-consistency --check-ec-hash  --check-spv-proof
+
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> 
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> python af_verify.py  --log-file output/audit_log_main.json  --output-file output/audit_log_main_t3_verified.json --keyword "hash-only" --check-tx-consistency --check-ec-hash  --check-spv-proof
+2026-03-05 16:00:29,104 - INFO - Loading audit log file: output/audit_log_main.json
+G:\Meine Ablage\Documents\Blockchain\AnchorForge\.venv\Lib\site-packages\portalocker\utils.py:231: UserWarning: timeout has no effect in blocking mode
+  warnings.warn(
+2026-03-05 16:00:29,158 - INFO - Successfully loaded 3 records.
+2026-03-05 16:00:29,158 - INFO - Filtering records by keyword: 'hash-only'
+2026-03-05 16:00:29,160 - INFO - Found 1 records matching keyword.
+2026-03-05 16:00:29,160 - INFO - --- V0.1.3 Audit Runner Started ---
+2026-03-05 16:00:29,170 - INFO - Block header cache initialized from G:\Meine Ablage\Documents\Blockchain\AnchorForge\cache\public\block_headers_main.json.
+2026-03-05 16:00:29,170 - INFO - Preparing to verify all records in the dataset.
+2026-03-05 16:00:29,170 - INFO - Found 1 'confirmed' record(s) to verify...
+2026-03-05 16:00:29,171 - INFO - --- Verifying 1/1 (ID: c1b9e79b-3701-4305-a20b-6fa92e40b15d) ---
+2026-03-05 16:00:29,171 - INFO -
+--- V2 Verification Started for Record: c1b9e79b-3701-4305-a20b-6fa92e40b15d ---
+2026-03-05 16:00:29,172 - INFO -   Verifying Step: Local Transaction Consistency...
+2026-03-05 16:00:29,172 - INFO -   PASS: TX consistency check.
+2026-03-05 16:00:29,172 - INFO -   Verifying Step: Local Hash Consistency (EC)...
+2026-03-05 16:00:29,174 - INFO -   PASS: Local EC hash consistency check.
+2026-03-05 16:00:29,174 - INFO -   Verifying Step 4: Blockchain Inclusion (SPV Proof)...
+Block-Header (Little-Endian): 00204d2344280de47a338d370fe0857e559cc6b429d5c9445e1fce1c000000000000000085aaac6b081f8f17cc662a50c15c29fa89523c8b94999286b3bd814109ef3eccfc7da9691e2e2218932213e8
+Computed Block-Hash: 0000000000000000088e1e289414ac95a97a3798d2f173625edc8234cbc4c1ef
+Expected Block-Hash: 0000000000000000088e1e289414ac95a97a3798d2f173625edc8234cbc4c1ef
+2026-03-05 16:00:29,175 - INFO - Starting hash (TxID, Little-Endian): 8b6b3e232847725909855112cb48901106a80c7b20dec86a7796c82d8c8b23d2
+2026-03-05 16:00:29,175 - INFO - Node 1 (Little-Endian): c5c90e637ed50788fc5108923acecc6ce588bd608d5bf5665504f194ce565a47
+2026-03-05 16:00:29,175 - INFO - Node 2 (Little-Endian): e11fa7ad599e1b2ed47febb62fc7bc9ffbf55a3d5039b15fac0d07ced523923f
+2026-03-05 16:00:29,175 - INFO - Node 3 (Little-Endian): 2308031fb52ca1518feff807d3bffe28b6f172949526c6628192277079e40555
+2026-03-05 16:00:29,176 - INFO - Node 4 (Little-Endian): 508c3928897acea3cd87bacce7672fa3f6091dda15097f6a31a9ecadea5d80bc
+2026-03-05 16:00:29,176 - INFO - Node 5 (Little-Endian): 807d4a59deb75e6bb57595cdb086f1f975de1bc7d9c930cbaf7b5af7f3c8b24a
+2026-03-05 16:00:29,177 - INFO - Node 6 (Little-Endian): 5a967a63e2f0f3308043e292a01be7672e2019d97399196cceb28ec78263ef4b
+2026-03-05 16:00:29,177 - INFO - Node 7 (Little-Endian): d3d50ba259a57e4b5259351b5ed01cce7f717b1f6ea5cba77417342e31a30161
+2026-03-05 16:00:29,177 - INFO - Node 8 (Little-Endian): 2cf6cbb17ee2002a2c4905c774c51ea9fdfb806938a18dbc6a3cc05878815320
+2026-03-05 16:00:29,178 - INFO - Calculated Merkle Root (Big-Endian): cc3eef094181bdb3869299948b3c5289fa295cc1502a66cc178f1f086bacaa85
+2026-03-05 16:00:29,178 - INFO - Target Merkle Root (Big-Endian): cc3eef094181bdb3869299948b3c5289fa295cc1502a66cc178f1f086bacaa85
+2026-03-05 16:00:29,178 - INFO -   PASS: SPV proof check.
+2026-03-05 16:00:29,178 - INFO - --- OVERALL: PASSED ---
+2026-03-05 16:00:29,180 - INFO -
+--- V0.1.3 AUDIT RUNNER SUMMARY ---
+2026-03-05 16:00:29,180 - INFO - Total Records Requested: 1
+2026-03-05 16:00:29,180 - INFO - Skipped (not confirmed): 0
+2026-03-05 16:00:29,181 - INFO - Total Confirmed Records Checked: 1
+2026-03-05 16:00:29,181 - INFO - Passed: 1
+2026-03-05 16:00:29,181 - INFO - Failed: 0
+2026-03-05 16:00:29,182 - INFO - Overall Result: PASS
+2026-03-05 16:00:29,182 - INFO - Audit run complete. Writing results to NEW file: output/audit_log_main_t3_verified.json
+2026-03-05 16:00:29,182 - INFO - Saving audit results to: output/audit_log_main_t3_verified.json
+2026-03-05 16:00:29,210 - INFO - Successfully saved 3 records to output/audit_log_main_t3_verified.json.
+2026-03-05 16:00:29,210 - INFO - --- V0.2 AUDIT RUN PASSED ---
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> 
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> 
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> 
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> 
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> python af_verify.py  --log-file output/audit_log_main.json  --output-file output/audit_log_main_t3_verified.json --keyword "hash-only" --check-tx-consistency --check-ec-hash  --check-spv-proof
+2026-03-05 16:01:20,290 - INFO - Loading audit log file: output/audit_log_main.json
+G:\Meine Ablage\Documents\Blockchain\AnchorForge\.venv\Lib\site-packages\portalocker\utils.py:231: UserWarning: timeout has no effect in blocking mode
+  warnings.warn(
+2026-03-05 16:01:20,347 - INFO - Successfully loaded 3 records.
+2026-03-05 16:01:20,352 - INFO - Filtering records by keyword: 'hash-only'
+2026-03-05 16:01:20,352 - INFO - Found 1 records matching keyword.
+2026-03-05 16:01:20,352 - INFO - --- V0.2 Audit Runner Started ---
+2026-03-05 16:01:20,360 - INFO - Block header cache initialized from G:\Meine Ablage\Documents\Blockchain\AnchorForge\cache\public\block_headers_main.json.
+2026-03-05 16:01:20,360 - INFO - Preparing to verify all records in the dataset.
+2026-03-05 16:01:20,360 - INFO - Found 1 'confirmed' record(s) to verify...
+2026-03-05 16:01:20,360 - INFO - --- Verifying 1/1 (ID: c1b9e79b-3701-4305-a20b-6fa92e40b15d) ---
+2026-03-05 16:01:20,360 - INFO -
+--- V2 Verification Started for Record: c1b9e79b-3701-4305-a20b-6fa92e40b15d ---
+2026-03-05 16:01:20,360 - INFO -   Verifying Step: Local Transaction Consistency...
+2026-03-05 16:01:20,360 - INFO -   PASS: TX consistency check.
+2026-03-05 16:01:20,360 - INFO -   Verifying Step: Local Hash Consistency (EC)...
+2026-03-05 16:01:20,360 - INFO -   PASS: Local EC hash consistency check.
+2026-03-05 16:01:20,360 - INFO -   Verifying Step 4: Blockchain Inclusion (SPV Proof)...
+Block-Header (Little-Endian): 00204d2344280de47a338d370fe0857e559cc6b429d5c9445e1fce1c000000000000000085aaac6b081f8f17cc662a50c15c29fa89523c8b94999286b3bd814109ef3eccfc7da9691e2e2218932213e8
+Computed Block-Hash: 0000000000000000088e1e289414ac95a97a3798d2f173625edc8234cbc4c1ef
+Expected Block-Hash: 0000000000000000088e1e289414ac95a97a3798d2f173625edc8234cbc4c1ef
+2026-03-05 16:01:20,360 - INFO - Starting hash (TxID, Little-Endian): 8b6b3e232847725909855112cb48901106a80c7b20dec86a7796c82d8c8b23d2
+2026-03-05 16:01:20,360 - INFO - Node 1 (Little-Endian): c5c90e637ed50788fc5108923acecc6ce588bd608d5bf5665504f194ce565a47
+2026-03-05 16:01:20,360 - INFO - Node 2 (Little-Endian): e11fa7ad599e1b2ed47febb62fc7bc9ffbf55a3d5039b15fac0d07ced523923f
+2026-03-05 16:01:20,360 - INFO - Node 3 (Little-Endian): 2308031fb52ca1518feff807d3bffe28b6f172949526c6628192277079e40555
+2026-03-05 16:01:20,360 - INFO - Node 4 (Little-Endian): 508c3928897acea3cd87bacce7672fa3f6091dda15097f6a31a9ecadea5d80bc
+2026-03-05 16:01:20,360 - INFO - Node 5 (Little-Endian): 807d4a59deb75e6bb57595cdb086f1f975de1bc7d9c930cbaf7b5af7f3c8b24a
+2026-03-05 16:01:20,360 - INFO - Node 6 (Little-Endian): 5a967a63e2f0f3308043e292a01be7672e2019d97399196cceb28ec78263ef4b
+2026-03-05 16:01:20,360 - INFO - Node 7 (Little-Endian): d3d50ba259a57e4b5259351b5ed01cce7f717b1f6ea5cba77417342e31a30161
+2026-03-05 16:01:20,360 - INFO - Node 8 (Little-Endian): 2cf6cbb17ee2002a2c4905c774c51ea9fdfb806938a18dbc6a3cc05878815320
+2026-03-05 16:01:20,373 - INFO - Calculated Merkle Root (Big-Endian): cc3eef094181bdb3869299948b3c5289fa295cc1502a66cc178f1f086bacaa85
+2026-03-05 16:01:20,373 - INFO - Target Merkle Root (Big-Endian): cc3eef094181bdb3869299948b3c5289fa295cc1502a66cc178f1f086bacaa85
+2026-03-05 16:01:20,374 - INFO -   PASS: SPV proof check.
+2026-03-05 16:01:20,374 - INFO - --- OVERALL: PASSED ---
+2026-03-05 16:01:20,374 - INFO -
+--- V0.1.3 AUDIT RUNNER SUMMARY ---
+2026-03-05 16:01:20,375 - INFO - Total Records Requested: 1
+2026-03-05 16:01:20,375 - INFO - Skipped (not confirmed): 0
+2026-03-05 16:01:20,375 - INFO - Total Confirmed Records Checked: 1
+2026-03-05 16:01:20,376 - INFO - Passed: 1
+2026-03-05 16:01:20,376 - INFO - Failed: 0
+2026-03-05 16:01:20,376 - INFO - Overall Result: PASS
+2026-03-05 16:01:20,378 - INFO - Audit run complete. Writing results to NEW file: output/audit_log_main_t3_verified.json
+2026-03-05 16:01:20,378 - INFO - Saving audit results to: output/audit_log_main_t3_verified.json
+2026-03-05 16:01:20,405 - INFO - Successfully saved 3 records to output/audit_log_main_t3_verified.json.
+2026-03-05 16:01:20,405 - INFO - --- V0.2 AUDIT RUN PASSED ---
+(.venv) PS G:\Meine Ablage\Documents\Blockchain\AnchorForge> 

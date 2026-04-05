@@ -1,0 +1,109 @@
+Überweisen 0.3 BSV https://whatsonchain.com/address/1crTX7mcfvPpGawwPknU1JfHfC9A9chc3
+
+FEE STRATEGIE!
+python main_wallet_setup.py --create-utxolets 14650 2000 --mainnet
+
+Store Tx 1 :  6b8d4469e592fa0908d13ff2032886c4be62872316a53b587b7b533f214c83ae
+68.194 B
+Block 937951, 
+000000000000000010e84d9133a1dc87cec2570449756034e0fe933f71cb5d73
+0.00006820 BSV  0,00094 
+13,80€
+------
+
+Bei einer sehr großen Transaktion von 68.194 Byte (sehr viele Inputs/Outputs) ergeben sich folgende geschätzte Kosten (Stand Anfang 2026):
+Bei niedriger Priorität (~5-10 Sats/vB):
+Berechnung: 68.194 Byte * 7 Sat/Byte 
+ 477.358 Satoshis
+Kosten: ca. 250 € - 350 € (bei einem Kurs von ~57.000-60.000 €/BTC)
+
+Bei hoher Priorität (Netzwerkstau >20 Sats/vB):
+Berechnung: 68.194 Byte * 25 Sat/Byte 
+ 1.704.850 Satoshis
+Kosten: ca. 900 € - 1.000 €+ 
+
+Zusammenfassung: Eine Transaktion dieser enormen Größe (durchschnittliche Transaktionen sind ca. 250-450 Byte) ist extrem teuer. Die Kosten können bei hoher Netzwerkauslastung sehr schnell mehrere hundert bis über tausend Euro betragen. 
+
+
+-------
+Tx 1 : 41bd1084bb877acb31df59f76c10adeba98e3c399e6c7a6a48a9f9282786dc33
+#938027
+------
+cp audit_log_main.json -> af_monitor.py -> confirmed -> audit_log_main_t1_confirmed.json 
+python .\af_verify.py --log-file .\output\audit_log_main_t1_confirmed.json --output-file .\output\audit_log_main_t1_verified.json --network main 
+
+----
+Exkurs Header:
+Ein SPV-Header entsteht, wenn man Version, PreviousBlockHash, MerkleRoot, Time, Bits und Nonce aus dem JSON nimmt, sie ins Little-Endian-Format (Rückwärts-Byte-Reihenfolge) umwandelt und zusammenklebt.
+
+Für exakt deinen Genesis-Block (0000000000000000157ac2a479b4b4ab0a9e6b2dc15e76ca7e1f5e61c83762b9) ist der 80-Byte-Header genau dieser Hex-String:
+0000003efda13644c5d8300b3a0d6d02992bdc9d1b47f1055bfbc30a0000000000000000d0a0dcc062d7164f822f0325526d260d47bf6f69e4ec79de42fc4c2ceaeee48a7436a0698d481d184a845943
+
+(Du kannst diesen String testweise doppelt SHA256-hashen und wieder umdrehen, und es kommt exakt dein Blockhash heraus!
+
+
+
+->  603352ed7ebe5f557cb4ec447991a5c5acb0a275fb77ea50cdef4508521e85a8
+End-Header Exkurs
+-----
+
+
+
+
+
+
+
+
+
+
+Into Bash:
+DEMO_TEXT="AnchorForge v0.2 Genesis: SPV-based Off-Chain Data Verification. | Concept: Prepare off-chain integrity proofs using Bitcoin's SPV. | Updates: Uses Safe OP_RETURN, flexible TLV architecture for multiple signatures & embedded data, supports X.509. | Verifier needs only the Integrity Record & local block headers. | PoC: github.com/40ps/AnchorForge"
+
+$ echo  -n $DEMO_TEXT | sha256sum.exe
+547fbfcf6917d08d0cb43e2616e5c4c948e4998e518543987457dede0a11af02 *-
+
+in https://emn178.github.io/online-tools/sha256.html
+AnchorForge v0.2 Genesis: SPV-based Off-Chain Data Verification. | Concept: Prepare off-chain integrity proofs using Bitcoin's SPV. | Updates: Uses Safe OP_RETURN, flexible TLV architecture for multiple signatures & embedded data, supports X.509. | Verifier needs only the Integrity Record & local block headers. | PoC: github.com/40ps/AnchorForge
+547fbfcf6917d08d0cb43e2616e5c4c948e4998e518543987457dede0a11af02
+
+python af_anchor.py \
+  --data="$DEMO_TEXT" \
+  --include hash,ec,x509,data \
+  --keyword "genesis_v0.2" \
+  --transaction-note="$DEMO_TEXT" \
+  --record-note="$DEMO_TEXT" --dry-run
+
+Then in OP_RETURN 48 00 <HASH>
+Also, copy from Note
+
+
+Schritt C: Der Blockchain-Beweis (Der Wow-Moment)
+
+Du öffnest WhatsOnChain mit der neuen TxID.
+
+In der ASCII-Ansicht sieht das Publikum den Text wunderbar lesbar (inklusive der | Trennzeichen).
+
+Du kopierst den Text direkt aus dem Browser (oder das Publikum macht es nach).
+
+Du fügst ihn in das Online-SHA256-Tool ein.
+
+Ergebnis: Der Hash aus dem Online-Tool ist identisch mit dem Hash aus der Kommandozeile!
+
+Du gehst in WhatsOnChain auf die Script-Ansicht, suchst nach 48 (dem Tag 'H') und zeigst: "Seht ihr, hier steht 00 und danach exakt unser Hash!"
+
+Schritt D: Der lokale Audit-Record Beweis
+Du öffnest die Datei output/audit_log_test.json.
+Du zeigst: "Hier ist das Feld original_audit_content. Und hier ist das Feld data_hash_pushed_to_op_return. Alles passt perfekt zusammen."
+
+
+App ID: 240 (Dezimal für f0)
+
+Hash ('H'): 72 (Dezimal für 48)
+
+Data ('D'): 68 (Dezimal für 44)
+
+Signature ('S'): 83 (Dezimal für 53)
+
+Cert ('C'): 67 (Dezimal für 43)
+
+Note ('N'): 78 (Dezimal für 4e)

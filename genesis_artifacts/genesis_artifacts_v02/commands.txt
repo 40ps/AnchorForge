@@ -1,0 +1,42 @@
+Feestrategy 100 
+main
+
+
+bash:
+python af_anchor.py \
+  --data="AnchorForge v0.2 example data" \
+  --include hash,ec,x509,data \
+  --keyword "genesis_v0.2" \
+  --transaction-note @genesis_artifacts/01_genesis_v02_concept.md \
+  --record-note @genesis_artifacts/01_record_explanation.md
+
+python af_monitor.py -d 10
+python af_sync.py --block <x>
+
+<copy audit_log_main.json x>
+
+python af_verify.py  --log-file test_ir_t1_confirmed.json   --output-file test_ir_t1_verified.json  --network test
+----
+
+<copy tx-id 1 in 02_t2_explanation.md  (Genesis Tx 1)>
+
+
+python af_anchor.py \
+  --file "output/audit_log_main_t1_confirmed.json" \
+  --include hash,ec,x509,data \
+  --keyword "genesis_v0.2_inception" \
+  --transaction-note @genesis_artifacts/02_t2_explanation.md \
+  --record-note @genesis_artifacts/02_t2_record_decoder.md
+
+python af_anchor.py   --file "output/audit_log_main_t1_confirmed.json"   --include hash,ec,x509,data   --keyword "genesis_v0.2_inception"   --transaction-note @genesis_artifacts/02_t2_explanation.md   --record-note @genesis_artifacts/02_t2_record_decoder.md
+
+python af_monitor.py -d 1
+
+python af_sync --block 938338 --minimal-info
+
+
+python af_verify.py --log-file test_ir_t2_confirmed.json \
+  --check-tx-consistency \
+  --check-spv-proof \
+  --check-ec-hash \
+  --check-ec-signature

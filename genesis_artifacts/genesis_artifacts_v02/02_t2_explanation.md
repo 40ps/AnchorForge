@@ -1,0 +1,201 @@
+**Integrity Record for SPV-based Off-Chain Data Verification (AnchorForge v0.2)**
+
+**Overview**
+Transactions from and to this address are part of a Proof-of-Concept for preparing off-chain integrity proofs of arbitrary data records (e.g., audit logs, documents, images, AI interactions) using Bitcoin's Simplified Payment Verification (SPV, Bitcoin Whitepaper Sec. 8). A verifier needs only an Integrity Record and a local cache of block headers, no live blockchain access.
+
+**Genesis Tx 2: The Inception Record**
+This transaction anchors the complete Integrity Record of the previous transaction (Genesis Tx 1: 41bd1084bb877acb31df59f76c10adeba98e3c399e6c7a6a48a9f9282786dc33). It demonstrates how AnchorForge can secure entire audit trails and complex nested files.
+
+**Record Structure**
+Records contain an id, the original data `D` (could be a filename, too) and the logging timestamp. A format description helps to build an own tool. A more detailed description is contained in this embedded Integrity Record to demonstrate the self-sufficiency of the proof.
+
+The blockchain record section provides the `TxId`, the `rawTx` used, the timestamp broadcasted, the confirming block hash & height, and the merkle proof `M`. Additional information is included for demonstration purposes, but is not necessary, as it is contained in the stored raw transaction, too.
+
+**Blockheader**
+The final verification step is proving the transaction's inclusion in the blockchain. This is done by validating the merkle path from the `TxId` to the merkle root in a trusted block header. A verifier maintains a local, verified copy of these headers (80 bytes each). For demonstration purposes, the full, verbose block header is included below.
+
+**How to verify the data:**
+1) **Genesis Tx 1 (String):** To verify the original string "AnchorForge v0.2 example data" anchored with Tx 1, you can simply extract the JSON Record from this transaction and use it to verify the first transaction.
+2) **Genesis Tx 2 (File):** That Integrity Record itself has been anchored, too, with this transaction. It has been embedded on chain as JSON file. Copying it manually from a block explorer might introduce hidden line-break errors (OS differences). To verify the integrity of THIS record, please download it directly from the blockchain, e.g., using the `af_download.py` tool. This ensures a bit-perfect binary copy.
+
+**Verify Integrity Locally**
+With `R` and local block headers `BH`, a verifier checks:
+- Integrity: Confirm `Hash(R.D)` matches `H` in `R.rawTx` (data is unchanged).
+- Authenticity: Verify `S` is valid for `H` using `PuK` or X.509 Certificate (proves authorship).
+- Consistency: Ensure `Hash(R.rawTx)` equals `R.TxId` (transaction is authentic).
+- Blockchain Inclusion: Confirm `M` proves `R.TxId` is in `BH`’s merkle root (transaction is on-chain).
+
+**PoC:** github.com/40ps/AnchorForge.
+**Format:** Safe OP_RETURN uses a TLV (Tag-Length-Value) architecture holding flexible tags: [AppID|Hash|PubKey|Sig|Cert|Data|Ref|Note].
+
+**AnchorForge v0.2: TLV Payload Decoder**
+
+The Integrity Record contains a `raw_tx` hex string. To parse the AnchorForge OP_RETURN payload, look for `OP_FALSE OP_RETURN` followed by these Tag-Length-Value (TLV) blocks. 
+
+**Tags (Hex / ASCII):**
+* `f0` (AppID): Identifies the AnchorForge protocol and version.
+* `48` ('H'): Hash of the anchored data (Prefix `00` = SHA256).
+* `50` ('P'): Public Key for ECDSA (Prefix `00` = Compressed).
+* `53` ('S'): ECDSA Signature (Prefix `01` = DER format).
+* `43` ('C'): X.509 Certificate (Prefix `01` = PEM format).
+* `44` ('D'): Embedded On-Chain Data (Prefix `00` = UTF-8, `01` = RAW).
+* `4e` ('N'): Transaction Note (Plain text).
+* `58` ('X'): External Reference / URI.
+
+**Parsing Rule:** [Push-Opcode] + [TAG] + [Length-Opcode] + [Prefix-Byte] + [Value]
+
+**Example Blockheader #938027 for Genesis T1:**
+A true SPV verifier only needs the raw 80-byte block header (shown here as a 160-character hex string) to cryptographically verify the Merkle root and Proof of Work, eliminating the need to download the block's transaction data:
+`0000003efda13644c5d8300b3a0d6d02992bdc9d1b47f1055bfbc30a0000000000000000d0a0dcc062d7164f822f0325526d260d47bf6f69e4ec79de42fc4c2ceaeee48a7436a0698d481d184a845943`
+
+A verbose JSON representation of the block including all transaction ids is given here to allow manual reproduction of the Merkle tree for this block.
+
+```json
+{
+   "0000000000000000157ac2a479b4b4ab0a9e6b2dc15e76ca7e1f5e61c83762b9": {
+        "hash": "0000000000000000157ac2a479b4b4ab0a9e6b2dc15e76ca7e1f5e61c83762b9",
+        "confirmations": 61,
+        "size": 59819,
+        "height": 938027,
+        "version": 1040187392,
+        "versionHex": "3e000000",
+        "merkleroot": "8ae4eeea2c4cfc42de79ece4696fbf470d266d5225032f824f16d762c0dca0d0",
+        "txcount": 80,
+        "nTx": 0,
+        "num_tx": 80,
+        "tx": [
+            "803daad4227416c1422ba6a02c6f36a2d6edaf64b7099d208d2ec4f0457ef270",
+            "29306158159ff877ed33065fad879d10cfb879e975e50f51e2b7560cb56b498e",
+            "f975de62627d3ee590bd41538d240effc6eb1f6f9e7d16a9307971dd498f9661",
+            "a66b54f47b6fefeb555793ea548e54e34ac46490fa09df31a483fda021984aba",
+            "dc719e74b17256c5e129ab2492022eb951462120a81d622ea157136c8fd04a6f",
+            "8f92ba3324859887da45b2cbe1b2c6fa2f6e3b30f68e1bab971fa88e57136266",
+            "ad20150ae7b426308835367915dcbe3d183cc559a3cbca39cd4139e5c6c338ec",
+            "1271cebc0542f94216594a49dae8bd060ac3f1085003535f0b46b4e208a881b3",
+            "84811a752b541bee02ffd2b173a7cdf1323445bc0f0ae5f2d7a60969a81c9507",
+            "c9c015b0fe6d7f3202dc32553b4eff6a93774ca686288aec2a203ba88c007b9a",
+            "f1ad8b9fb027f2ea62d88c73bc539012b22e914da0ccca1f0a391f70b35aef7a",
+            "1b58124e9c606370e805e2bd2e159763c5dc7b8016d4ee6a468153b51fbdef44",
+            "16cd668c30d37c4183710ac856489ef3cfb20ed9491b705babc273d11ba9b7e6",
+            "e5040e7a13c2e423672bba0a90fce2f7a8e58eb702ed3f8524bc6cc1cacfdf2c",
+            "a65018b7ec24992b3279298d134ae9221e828411ef421775b6b11389cae2e016",
+            "343e78d62c4fee2edea8502872be1e7440d1bb20d48bebf5119243fc8bfdfd97",
+            "0e4312061fc64a73143e213b36b13f4fe08d25c19f92e3400e4edf4c8b70233b",
+            "960700f650bf01e9f983e8e9dbf74cc67d4dc5f50766d15273aed58380f0f60d",
+            "5c3f4a7c8572803a9f58e8de7cbe5455d29e41f15b4d855e762862636924bd52",
+            "85650dff66c658f39bd55c464b5f1892053213b1d9ffeda3ae2df5bc243a16be",
+            "6768c66639b147029674ac2ba751dedbe210e6b932eac7929ee824e1e79778a3",
+            "cfcce13efe00bf57c25b3570011d3502d95c0de6e2bda0faa0941bb19033748f",
+            "6a2dff930657dd82bbd7b1f1e05c838ea7df0aa88362d8ed3649730410fce5cf",
+            "a0e682bc05a6461f4c0810555ed822a0ef45a4af7a5c363df331057096a89a30",
+            "8c7a39c0c5b2c6050e3c9cb9aea20c97786e01514e0dd31f218a8c1aa8d1bfef",
+            "3c30e5a87a023ff38dea1e38a0ef94487797b19fe80d48395056b788363522cd",
+            "170a0ab4ec5ae40ffca8c18a53cb90ed101ca2c675165146bf585591b32e3629",
+            "5880116be80617e82bf2f6f2c462ec6bd59b7c1357d4dc0991ef758acd8e1ac9",
+            "daf5b5acb1393a4d8d665bf5d1623f99be34dd7f9ac0041f2b585da0bfe5eda1",
+            "e7776848b5badd7a0e5d88e9a3c05d603c3ec37d0092ceb32ca86cd198a5cb5d",
+            "1bbd9c30457ed918c640be1123530eae3d0b445d07daba86f8b7e7f82d465544",
+            "45059dbfd22a0fe41864ac071397ab13f27ea5f9a6d6942bfce3a2de3487b9d6",
+            "9466c8e42654d49b73b68970b82ba0a7826eb27ee8cd09af77775e798764aa0f",
+            "15b4a7e4613f3c820e1b45cbb40d7ecd8c5e4dd38b9ff0773030aa2518949771",
+            "35d2bfd1a5094e4f7dc151e0c603e85c7ea6cd7130f0027d1b4fba78d3e465fb",
+            "291d8d2d599effb1c5e2e4b32dc97bd78e10c6c7b63a05dd2841206ceb1b8612",
+            "2ac2db56cc9addc9821d04899875cb19bf82caa3101b9c487fc4ccb8f9ecd2ae",
+            "3c8e26960180cd4f4fc43165e3850bbd8dfd698fd4b2d664513d1368ebdfdb51",
+            "98cd5ee84462c74a2e77a77f1a1a34b33cf0e23c9d8b45b6ae5ea7da7b7cb743",
+            "b87a992c76837131acb88e8b9f69d77ea17b0f36f622e625a54df4bb219c84af",
+            "fb31c142f2b1ee07d39ccce811ddca7d8d052acc87fd8cfd39ce98d2329467fd",
+            "86999ad9c54561071d5b5c6ac414463692101935f402325f1268c88e4b34b54e",
+            "003daaa9745f1bcbe76ec044978c5e1b5706fb0f895147c60b0940a747bf2434",
+            "f023f8e24df94140a5836e7c50493312d7ab8992996d9eeb011118653ee0ebcd",
+            "d90865fd2ff567ad8bb7fdf88d4e9b29b5639690563b3ba805d467d156a0a31a",
+            "ae3e5709f4b82ff9b9921e27b7560d7bd505790e83f7ab3b51f960040a0ce284",
+            "bd475674c3e8b8502c77fb243a23c058121e6a0214eca81c20547528a61e7f8b",
+            "a2b1c5083509b2c42af50d5077374da1aea47e9b5033c370b550905b47cb7de6",
+            "2bc05f18a865d1cbe6848187094b267765b85ea9de3f5a889c2c6f72263ffbd0",
+            "8594dbb5dd7cb56bdd2387fb2330fb9559d4c0d2cbdf15aeafcc273929cf31ea",
+            "10622483d8c8d16ea26aa76657ef0441f328f08f2bc3a22984544950171ad717",
+            "166a7f6d251e953fa8abc5329efea6618f61451921dcb9e842a382b29918e044",
+            "638bc9805ddcdd91781e7c8259a9b440ad98706b8d80833cee80443f869a350f",
+            "93f9f8010617a69012152c21a04ddfac91a8f587c5298a197cab11a91cd33775",
+            "affadeacfc0141866ac1dcbd37967e3d922f7b07d8b7598ccf278a51de2be38d",
+            "2daafd4c4085556bf6793beabe34a6cdc3cda391e44e1750df51ef2fccae9e08",
+            "72501981266711ce3a029d9da0b07c015bc6d2d5cf49e25e195b9efb3c0b6814",
+            "9dd865bd1f9ec925eec890cd45552ab0d9d7d53ed759e32e120c62ff97cbb331",
+            "a3b201a335462af3a071ca4b82b895f77dcd49dbe9688bc41cae2b4a76a08462",
+            "d532d34e32a3404ab3c627ecb8f8ef9a2ad7f455f09f0b5b5f7af4245648453b",
+            "046c3c8cdc3287d97317de49c35dd7ee983fe78b9d75c4ee653eb5bd003f30ff",
+            "19f1496e1d9c4c3ef8d86e0cb98265129cda9555663660ba2abff9161fbb35f7",
+            "681b5737b2f58b455fc9368be5584828aed6093e8706224dfe6a185b41bbded7",
+            "b6fd7ace8d434cbb17c45cc473d50905fb8968847bba4a6e0d9c6628f8812e2b",
+            "a1c5e6bb69c687c688df05ec7731100d15d59ba7c0c2047a2f2fa39e519510d5",
+            "257cdb456520b0cf9995ab5f58c9ead035dec08449b1b1d28c2cdce332b310ac",
+            "84cca44955665f2fbe26083318dad2001ba7ed357b13b491014463b85713a776",
+            "41bd1084bb877acb31df59f76c10adeba98e3c399e6c7a6a48a9f9282786dc33",
+            "191719b96916252269184adb28239c06c0e0fce8652882017ddccb2d5e2a948c",
+            "b56585ff6b52f8b21f3b3e11f392a136876a0aa3b2e7e3722f73f401771902da",
+            "6002969a1b2078d5f758d51b1c1711b0c4f78674fa4fb79fa7c627b810c8c541",
+            "08efa9c632e19994a7fa7c267039fb1effd7299c6492b292e4bb19b7ba84d676",
+            "34458cc0c8f24c67e02633fa98e2ca5145b949017f20ec0258d96f6c5304baa8",
+            "441b3e6bdbde183f4619ed7b34384a4b0566ca6bfc0e2ece2f4f44983e0c31f0",
+            "7fe59058ea8ea519536d4796fd79eaac6823ddac834c84db5b3518614583c5c6",
+            "437e1a5ad40f8f55d6064f6371e507bebdf5b8420ed44187a40c3d9396312f2d",
+            "8876f9ef25f977f530b58395f4325baadfbf1e8385d52fa8a04609499f6ff2db",
+            "8016f8863c7dd67a9cfb976be81cf2ce198295b68e5c859ff851fced9354fb19",
+            "d971fe64676d1a40d0a32ca5ec688ae43fbbe363da322b9d94a1df449ad799a8",
+            "db3d3dfce1d28c21ae2fec92a669c0182e493f881f9aa56eb84289659abb94dd"
+        ],
+        "time": 1772107380,
+        "mediantime": 1772105211,
+        "nonce": 1129940042,
+        "bits": "181d488d",
+        "difficulty": 37546691799.56207,
+        "chainwork": "0000000000000000000000000000000000000000016b6cc88ec97b427e7cab99",
+        "previousblockhash": "00000000000000000ac3fb5b05f1471b9ddc2b99026d0d3a0b30d8c54436a1fd",
+        "nextblockhash": "00000000000000001345dee41632f38b3ee44d9b1305ffe2421a27e5e4a0c692",
+        "coinbaseTx": {
+            "txid": "803daad4227416c1422ba6a02c6f36a2d6edaf64b7099d208d2ec4f0457ef270",
+            "hash": "803daad4227416c1422ba6a02c6f36a2d6edaf64b7099d208d2ec4f0457ef270",
+            "version": 1,
+            "size": 108,
+            "locktime": 0,
+            "vin": [
+                {
+                    "coinbase": "032b500e2f71646c6e6b2ff7bf46aa67ab9cb7f9441c00",
+                    "txid": "",
+                    "vout": 0,
+                    "scriptSig": {
+                        "asm": "",
+                        "hex": ""
+                    },
+                    "sequence": 4294967295
+                }
+            ],
+            "vout": [
+                {
+                    "value": 3.12519712,
+                    "n": 0,
+                    "scriptPubKey": {
+                        "asm": "OP_DUP OP_HASH160 201a3511c0466ba09babe0fe37df62f008a6c6d9 OP_EQUALVERIFY OP_CHECKSIG",
+                        "hex": "76a914201a3511c0466ba09babe0fe37df62f008a6c6d988ac",
+                        "reqSigs": 1,
+                        "type": "pubkeyhash",
+                        "addresses": [
+                            "13vk2489AFSXXXpWXWu58eb3LNqgvLaecz"
+                        ],
+                        "isTruncated": false
+                    }
+                }
+            ],
+            "blockhash": "0000000000000000157ac2a479b4b4ab0a9e6b2dc15e76ca7e1f5e61c83762b9",
+            "confirmations": 61,
+            "time": 1772107380,
+            "blocktime": 1772107380,
+            "blockheight": 938027
+        },
+        "totalFees": 0.0001971200000001616,
+        "miner": "qdlnk",
+        "pages": null
+    }
+}
+```
