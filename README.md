@@ -2,7 +2,9 @@
 
 **Scalable, Off-Chain Verifiable Audit Trails on Bitcoin SV**
 
-AnchorForge is a Proof of Concept (PoC) demonstrating how the Bitcoin SV blockchain acts as a public ledger for high-frequency data integrity anchors. Unlike traditional solutions, AnchorForge enables **off-chain verification (SPV)** that scales without requiring access to blockchain except (for an initial list of blockheaders).
+AnchorForge is a Proof of Concept (PoC) **to demonstrate** how the Bitcoin SV blockchain can act as a public ledger for high-frequency data integrity anchors. Unlike traditional solutions, AnchorForge enables **off-chain verification (SPV)** that scales without requiring access to blockchain except (for an initial list of blockheaders).
+
+Note: This is a PoC. For real efficency, the concept needs to be reimplemented with C++ (or similar) using professional API access for the anchoring, removing the verbosity in data, protocols, a professional wallet.
 
 ## ⚠️ Experimental Software Notice
 This project is an early-stage Proof of Concept. It is **not** professional or production-ready software.
