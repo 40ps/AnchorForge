@@ -461,5 +461,8 @@ It provides:
 * a foundation for future tools and UI integration
 
 ---
+This specification may be complemented by documents in:
+docs/standards/
+
 Related:
-prompts/af_status_codegen.md
+prompts/codegen/af_status_codegen.md
