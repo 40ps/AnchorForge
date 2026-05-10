@@ -57,6 +57,7 @@ af_status.py
 anchorforge/
   status/
     __init__.py
+    models.py
     context.py
     resolvers.py
     readers.py
@@ -86,6 +87,46 @@ Thin CLI frontend:
 * exit-code mapping
 
 No business logic should live in the CLI script.
+
+Blocker-level import rule:
+
+`af_status.py` and `anchorforge/status/*` must not import
+`anchorforge.config.Config` at module top level. Config loading must occur only
+inside a controlled loader function that captures stdout/stderr and converts
+captured diagnostics into structured warnings. This is required so
+`--format json` can emit pure JSON on stdout.
+
+### `anchorforge/status/models.py`
+
+Defines shared status data models used by providers and formatters.
+
+Minimal models:
+
+```python
+@dataclass(frozen=True)
+class StatusWarning:
+    level: str
+    message: str
+    context: str = ""
+
+
+@dataclass(frozen=True)
+class StatusResult:
+    meta: dict[str, Any]
+    data: dict[str, Any]
+    warnings: list[StatusWarning]
+```
+
+`StatusWarning.level` must use canonical internal levels:
+
+* `INFO`
+* `WARNING`
+* `CRITICAL`
+* `ERROR`
+
+`StatusResult` is the provider and formatter boundary. Providers should return
+stable keys in `meta` and `data`, and should not print or perform output
+formatting.
 
 ### `anchorforge/status/context.py`
 

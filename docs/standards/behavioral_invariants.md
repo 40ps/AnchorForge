@@ -48,9 +48,18 @@ Invariant IDs use domain prefixes:
 
 **Expected behavior**
 
-`af_status` must never create, modify, truncate, normalize, repair, or initialize
-files. This includes config files, wallet stores, transaction stores, audit
-logs, header caches, application logs, runtime files, and directories.
+`af_status` must never intentionally create, modify, truncate, normalize,
+repair, or initialize files. This includes config files, wallet stores,
+transaction stores, audit logs, header caches, application logs, runtime files,
+and directories.
+
+V1 legacy compatibility exception:
+
+Importing `anchorforge.config.Config` may create configured runtime directories
+as part of current AnchorForge behavior. `af_status` may tolerate that existing
+import-time behavior in v1, but must not introduce any additional writes of its
+own. This exception must not be expanded. It should be removed by a future
+side-effect-free config-loading refactor.
 
 **Characterization test**
 
@@ -893,4 +902,3 @@ soft warnings with missing optional data.
 
 Use sentinel values for WIFs, API keys, and private material. Run text and JSON
 status output. Assert sentinel values do not appear anywhere in output.
-
