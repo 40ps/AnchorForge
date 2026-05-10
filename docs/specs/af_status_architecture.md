@@ -36,6 +36,17 @@ import-time behavior. Future refactoring should isolate configuration loading
 from directory creation so read-only tools can inspect configuration without
 filesystem side effects.
 
+For v1, `af_status` may tolerate current `Config` import-time side effects as
+existing AnchorForge behavior. It must not introduce any additional writes of
+its own. A future config refactor should provide a side-effect-free config
+loader for read-only tools, so strict read-only status checks can be satisfied
+without this compatibility exception.
+
+`Config` import may also emit diagnostics to stdout or stderr in some missing
+configuration cases. Status code must capture and suppress stdout/stderr during
+configuration loading, especially for `--format json`, and route any captured
+diagnostics into structured warnings instead of writing them directly to stdout.
+
 ---
 
 ## Proposed File Structure
@@ -130,6 +141,16 @@ Domain-specific providers:
 
 Each provider returns plain structured data and warnings. Providers do not print.
 
+Provider function contract:
+
+```python
+get_<domain>_status(context, detail) -> StatusResult
+```
+
+All providers must accept the resolved detail level and propagate it
+consistently. Providers may omit expensive or verbose local-only fields at lower
+detail levels, but must keep stable result keys.
+
 ### `anchorforge/status/formatters/*`
 
 Output-only modules:
@@ -188,6 +209,16 @@ StatusWarning(
 )
 ```
 
+Canonical internal and JSON warning levels are:
+
+* `INFO`
+* `WARNING`
+* `CRITICAL`
+* `ERROR`
+
+The text formatter may display `CRITICAL` as `CRITICAL WARNING` to match the
+human-readable severity wording in `af_status_spec.md`.
+
 JSON output must emit warnings in this shape:
 
 ```json
@@ -238,6 +269,17 @@ depend on a private wallet-manager helper. Status code must not call:
 * `wallet_manager._ensure_store_exists`
 * any `save_*` helper
 
+`--network` and address derivation must not produce misleading results:
+
+* `effective_network` controls file selection.
+* Derived addresses are shown only when they are safe and network-consistent.
+* If config-loaded secrets or addresses belong to a different network than the
+  effective network, status must not derive or display a misleading working
+  address. It should emit a warning instead.
+* When network consistency cannot be proven safely, status should prefer
+  reporting presence flags and selected file paths over deriving addresses from
+  secret material.
+
 ### File Discovery Fallback
 
 Current local state may exist in old or mixed locations. Providers should be
@@ -253,11 +295,39 @@ If both configured and discovered paths exist, providers should prefer
 address-derived paths when a worker address is available, then configured paths,
 then discovered single matches.
 
-Glob discovery must never merge multiple candidate stores silently. If multiple
-candidates exist, status output must report all candidates and pick one only by
-deterministic, documented precedence. Ambiguous discovery should produce a
-warning that includes the selected path, the selection reason, and the complete
-candidate list.
+Path selection rules for v1:
+
+1. Address-derived paths may win only when they exist and match the effective
+   network.
+2. Configured paths may win only when they exist and match the effective
+   network.
+3. Glob discovery may select only a single unambiguous candidate.
+4. Multiple discovered candidates must produce a warning and no automatic merge.
+5. If multiple candidates exist and none is selected by the rules above, status
+   should report the candidate list and treat the data source as ambiguous or
+   unavailable for that command.
+
+Glob discovery must never merge multiple candidate stores silently. Ambiguous
+discovery should produce a warning that includes the complete candidate list and
+the reason no automatic merge was performed.
+
+Path matching should be deterministic and based on stable properties such as
+normalized absolute paths and effective network in filename or file content. It
+must not depend on modification time.
+
+---
+
+## Detail Levels
+
+Detail resolution rules:
+
+* default detail is `normal`
+* `--detail basic|normal|full` is explicit and wins over verbosity flags
+* `-v` maps to `full` unless `--detail` is supplied
+* `-vv` is accepted and maps to `full` in v1
+* `-vv` is reserved for a possible future debug detail level
+
+Providers must receive the resolved detail value and apply it consistently.
 
 ---
 
@@ -327,6 +397,10 @@ Returns:
 * filtering by txid
 * filtering by date range
 
+Keyword matching is case-insensitive substring matching by default. Exact
+matching and regular-expression matching may be future extensions, but are not
+part of v1.
+
 The provider must tolerate malformed or missing logs with warnings.
 
 ### Headers Provider
@@ -342,6 +416,15 @@ Returns:
 * coverage relative to confirmed audit records that contain block hashes
 
 The provider must not fetch missing headers.
+
+Header readiness values:
+
+* `missing`: no readable header cache is available, or the cache contains no
+  usable headers.
+* `incomplete`: a readable cache exists, but one or more confirmed integrity
+  records with local block hashes are not covered by the cache.
+* `ready`: a readable cache exists and covers all confirmed integrity records
+  that require local header coverage.
 
 ### Warnings Provider
 
@@ -386,6 +469,27 @@ Supports local-only inspection:
 
 No network lookup is performed.
 
+For v1, `info tx --rawtx <rawtx>` is local-only:
+
+* if existing local library functionality can decode the raw transaction safely,
+  status may display decoded local details
+* status may compute and display the transaction ID when available locally
+* if decoding is not available or fails, status should return a raw transaction
+  summary such as byte length, hex validity, and a warning
+* no remote lookup or broadcast is performed
+
+---
+
+## Remote Extension Point
+
+V1 is local-only. It must not call remote APIs.
+
+Future remote comparison support should be implemented as explicit compare
+providers or provider modes, not as implicit behavior inside local providers.
+Any future remote-enabled result must label data source clearly as `local` or
+`remote`, and mixed local/remote consistency checks must identify which source
+produced each value.
+
 ---
 
 ## Formatting
@@ -399,6 +503,7 @@ Text output should be:
 * compact for overview
 * explicit about missing or inconsistent local state
 * free of secret values
+* free of ANSI color in v1
 
 ### JSON Formatter
 
@@ -450,6 +555,9 @@ Global options:
 -vv
 --no-color
 ```
+
+V1 emits no ANSI color. `--no-color` is accepted for CLI compatibility and is a
+no-op in v1.
 
 Default command:
 
