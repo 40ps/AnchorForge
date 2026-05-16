@@ -37,7 +37,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("overview", parents=[subcommand_globals])
-    subparsers.add_parser("utxo", parents=[subcommand_globals])
+    utxo_parser = subparsers.add_parser("utxo", parents=[subcommand_globals])
+    utxo_parser.add_argument("--next", dest="next_count", nargs="?", const=5, type=int, default=None)
+    utxo_parser.add_argument("--min-value", type=int, default=None)
+    utxo_parser.add_argument("--max-value", type=int, default=None)
     subparsers.add_parser("tx", parents=[subcommand_globals])
     subparsers.add_parser("integrity", parents=[subcommand_globals])
     subparsers.add_parser("headers", parents=[subcommand_globals])
@@ -101,7 +104,13 @@ def _dispatch(args: argparse.Namespace):
     if command == "overview":
         return get_overview_status(context, detail)
     if command == "utxo":
-        return get_utxo_status(context, detail)
+        return get_utxo_status(
+            context,
+            detail,
+            next_count=args.next_count,
+            min_value=args.min_value,
+            max_value=args.max_value,
+        )
     if command == "tx":
         return get_tx_status(context, detail)
     if command == "integrity":
