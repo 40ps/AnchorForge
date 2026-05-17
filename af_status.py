@@ -153,6 +153,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else EXIT_CLI_MISUSE
+    validation_error = _validate_args(args)
+    if validation_error:
+        parser.print_usage(sys.stderr)
+        print(f"{parser.prog}: error: {validation_error}", file=sys.stderr)
+        return EXIT_CLI_MISUSE
 
     try:
         result = _dispatch(args)
@@ -185,6 +190,29 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def main_entry() -> int:
     return main()
+
+
+def _validate_args(args: argparse.Namespace) -> str | None:
+    if args.command != "info":
+        return None
+    if args.type == "tx":
+        selected = [bool(args.txid), bool(args.rawtx)]
+        if sum(selected) != 1:
+            return "info tx requires exactly one of --txid or --rawtx"
+        return None
+    if args.type == "ir":
+        selected = [args.id, args.keyword, args.txid, args.date_from, args.date_to]
+        if not any(selected):
+            return "info ir requires at least one filter option"
+        return None
+    if args.type == "utxo":
+        if not args.outpoint:
+            return "info utxo requires --outpoint <txid:vout>"
+        txid, separator, vout = args.outpoint.partition(":")
+        if not txid or separator != ":" or not vout.isdigit():
+            return "info utxo --outpoint must use <txid:vout>"
+        return None
+    return None
 
 
 if __name__ == "__main__":
