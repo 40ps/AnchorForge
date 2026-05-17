@@ -55,7 +55,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "type",
         choices=("txid", "tx", "ir", "utxo-created", "utxo-used", "warnings"),
     )
-    last_parser.add_argument("n", nargs="?", type=int, default=5)
+    last_parser.add_argument("n", nargs="?", type=_last_count_arg, default=5)
 
     info_parser = subparsers.add_parser("info", parents=[subcommand_globals])
     info_parser.add_argument("type", choices=("tx", "ir", "utxo"))
@@ -90,6 +90,16 @@ def _add_global_options(parser: argparse.ArgumentParser, suppress_defaults: bool
         action="store_true",
         default=argparse.SUPPRESS if suppress_defaults else False,
     )
+
+
+def _last_count_arg(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("n must be a positive integer") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("n must be a positive integer")
+    return parsed
 
 
 def _resolve_detail(args: argparse.Namespace) -> str:
