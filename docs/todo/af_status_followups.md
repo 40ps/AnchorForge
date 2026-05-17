@@ -2,6 +2,18 @@
 
 This file tracks known limitations and follow-up work for `af_status.py`.
 
+## Current State
+
+Status: feature complete  
+Tag: af-status-v1-feature-complete  
+Branch: feature/af-status-cli  
+Last feature-complete commit: 6d874f3
+
+Summary:
+af_status v1 is implemented, documented, tested with focused status tests,
+and guarded by behavioral invariants. Remaining work is tracked as hardening
+and follow-up tasks.
+
 ## Open
 
 ### AFS-001 Publisher test suite failure
