@@ -15,6 +15,7 @@ from anchorforge.status.resolvers import select_local_json_source
 DEFAULT_LAST_COUNT = 5
 
 
+
 def get_integrity_status(
     context: StatusContext,
     detail: str,
