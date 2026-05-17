@@ -48,6 +48,12 @@ def get_utxo_status(
     filtered_utxos = _filter_utxos(active_utxos, min_value, max_value)
     preview_count = _bounded_count(next_count) if next_count is not None else 0
 
+    last_created = _newest_first(active_utxos)
+    last_used = _newest_first(used_utxos)
+    if detail != "full":
+        last_created = last_created[:DEFAULT_LAST_COUNT]
+        last_used = last_used[:DEFAULT_LAST_COUNT]
+
     return StatusResult(
         meta={"command": "utxo"},
         data={
@@ -58,8 +64,8 @@ def get_utxo_status(
             },
             "summary": _summary(active_utxos),
             "used_summary": _summary(used_utxos),
-            "last_created": _safe_utxos(_newest_first(active_utxos)[:DEFAULT_LAST_COUNT]),
-            "last_used": _safe_utxos(_newest_first(used_utxos)[:DEFAULT_LAST_COUNT]),
+            "last_created": _safe_utxos(last_created),
+            "last_used": _safe_utxos(last_used),
             "selection": {
                 "min_value": min_value,
                 "max_value": max_value,
