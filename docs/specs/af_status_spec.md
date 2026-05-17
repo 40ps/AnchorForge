@@ -461,8 +461,16 @@ It provides:
 * a foundation for future tools and UI integration
 
 ---
+## Behavioral Constraints
+
 This specification may be complemented by documents in:
 docs/standards/
+
+
+This tool must comply with the global invariants defined in:
+
+docs/standards/behavioral_invariants.md
+
 
 Related:
 prompts/codegen/af_status_codegen.md
