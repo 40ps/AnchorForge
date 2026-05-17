@@ -42,7 +42,11 @@ def _build_parser() -> argparse.ArgumentParser:
     utxo_parser.add_argument("--min-value", type=int, default=None)
     utxo_parser.add_argument("--max-value", type=int, default=None)
     subparsers.add_parser("tx", parents=[subcommand_globals])
-    subparsers.add_parser("integrity", parents=[subcommand_globals])
+    integrity_parser = subparsers.add_parser("integrity", parents=[subcommand_globals])
+    integrity_parser.add_argument("--keyword")
+    integrity_parser.add_argument("--txid")
+    integrity_parser.add_argument("--date-from")
+    integrity_parser.add_argument("--date-to")
     subparsers.add_parser("headers", parents=[subcommand_globals])
     subparsers.add_parser("warnings", parents=[subcommand_globals])
 
@@ -114,7 +118,14 @@ def _dispatch(args: argparse.Namespace):
     if command == "tx":
         return get_tx_status(context, detail)
     if command == "integrity":
-        return get_integrity_status(context, detail)
+        return get_integrity_status(
+            context,
+            detail,
+            keyword=args.keyword,
+            txid=args.txid,
+            date_from=args.date_from,
+            date_to=args.date_to,
+        )
     if command == "headers":
         return get_headers_status(context, detail)
     if command == "warnings":
