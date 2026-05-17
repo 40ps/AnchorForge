@@ -52,8 +52,24 @@ Comprehensive guides are available in the `/docs` directory:
 2. [CLI Tool Manual](docs/cli_manual.md) - Detailed reference for all command-line tools.
 3. [Architecture & Protocol](docs/architecture.md) - Deep dive into the TLV system and SPV logic.
 4. [Protocol Standard v0.2](docs/protocol_standard_v02.md) - Technical byte-level specification.
-5. [Project History](docs/history.md) - Milestones.
-6. [Acknowledgements](ACKNOWLEDGEMENTS.md) - Acknowledgements.
+5. [af_status CLI Guide](docs/cli/af_status_cli_guide.md) - Read-only local status and inspection tool.
+6. [af_status Examples](docs/cli/af_status_examples.md) - Common local inspection commands.
+7. [Project History](docs/history.md) - Milestones.
+8. [Acknowledgements](ACKNOWLEDGEMENTS.md) - Acknowledgements.
+
+### Read-only Status Inspection
+
+`af_status.py` inspects local AnchorForge state without creating transactions,
+syncing headers, repairing files, or contacting remote APIs.
+
+```bash
+.venv/bin/python af_status.py overview
+.venv/bin/python af_status.py utxo --format json
+.venv/bin/python af_status.py headers
+```
+
+See the [af_status CLI Guide](docs/cli/af_status_cli_guide.md) for command and
+JSON output details.
 
 ### Configuration
 Copy the template
